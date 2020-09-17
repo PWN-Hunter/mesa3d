@@ -41,6 +41,7 @@
 #include "main/extensions.h"
 #include "main/formats.h"
 #include "main/framebuffer.h"
+#include "main/imports.h"
 #include "main/macros.h"
 #include "main/mipmap.h"
 #include "main/mtypes.h"
@@ -59,7 +60,6 @@
 #include "drivers/common/driverfuncs.h"
 #include "drivers/common/meta.h"
 #include "vbo/vbo.h"
-#include "util/u_memory.h"
 
 
 #define OSMESA_RENDERBUFFER_CLASS 0x053
@@ -857,7 +857,7 @@ OSMesaCreateContextAttribs(const int *attribList, OSMesaContext sharelist)
       osmesa->gl_buffer = _mesa_create_framebuffer(osmesa->gl_visual);
       if (!osmesa->gl_buffer) {
          _mesa_destroy_visual( osmesa->gl_visual );
-         _mesa_free_context_data(&osmesa->mesa, true);
+         _mesa_free_context_data(&osmesa->mesa);
          free(osmesa);
          return NULL;
       }
@@ -890,15 +890,15 @@ OSMesaCreateContextAttribs(const int *attribList, OSMesaContext sharelist)
          TNLcontext *tnl;
 
 	 if (!_swrast_CreateContext( ctx ) ||
-             !_vbo_CreateContext( ctx, false ) ||
+             !_vbo_CreateContext( ctx ) ||
              !_tnl_CreateContext( ctx ) ||
              !_swsetup_CreateContext( ctx )) {
             _mesa_destroy_visual(osmesa->gl_visual);
-            _mesa_free_context_data(ctx, true);
+            _mesa_free_context_data(ctx);
             free(osmesa);
             return NULL;
          }
-
+	
 	 _swsetup_Wakeup( ctx );
 
          /* use default TCL pipeline */
@@ -922,7 +922,7 @@ OSMesaCreateContextAttribs(const int *attribList, OSMesaContext sharelist)
 
          if (ctx->Version < version_major * 10 + version_minor) {
             _mesa_destroy_visual(osmesa->gl_visual);
-            _mesa_free_context_data(ctx, true);
+            _mesa_free_context_data(ctx);
             free(osmesa);
             return NULL;
          }
@@ -958,7 +958,7 @@ OSMesaDestroyContext( OSMesaContext osmesa )
       _mesa_destroy_visual( osmesa->gl_visual );
       _mesa_reference_framebuffer( &osmesa->gl_buffer, NULL );
 
-      _mesa_free_context_data(&osmesa->mesa, true);
+      _mesa_free_context_data(&osmesa->mesa);
       free( osmesa );
    }
 }
@@ -1040,7 +1040,7 @@ OSMesaMakeCurrent( OSMesaContext osmesa, void *buffer, GLenum type,
 
    osmesa->DataType = type;
 
-   /* Set renderbuffer fields.  Set width/height = 0 to force
+   /* Set renderbuffer fields.  Set width/height = 0 to force 
     * osmesa_renderbuffer_storage() being called by _mesa_resize_framebuffer()
     */
    osmesa->srb->Buffer = buffer;

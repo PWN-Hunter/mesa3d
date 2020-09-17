@@ -88,9 +88,8 @@ vmw_svga_winsys_surface_reference(struct vmw_svga_winsys_surface **pdst,
                                   struct vmw_svga_winsys_surface *src);
 void *
 vmw_svga_winsys_surface_map(struct svga_winsys_context *swc,
-                            struct svga_winsys_surface *srf,
-                            unsigned flags, boolean *retry,
-                            boolean *rebind);
+			    struct svga_winsys_surface *srf,
+			    unsigned flags, boolean *retry);
 void
 vmw_svga_winsys_surface_unmap(struct svga_winsys_context *swc,
                               struct svga_winsys_surface *srf,

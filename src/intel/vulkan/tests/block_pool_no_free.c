@@ -21,10 +21,11 @@
  * IN THE SOFTWARE.
  */
 
+#undef NDEBUG
+
 #include <pthread.h>
 
 #include "anv_private.h"
-#include "test_common.h"
 
 #define NUM_THREADS 16
 #define BLOCKS_PER_THREAD 1024
@@ -50,24 +51,24 @@ static void *alloc_blocks(void *_job)
       block = anv_block_pool_alloc(job->pool, block_size, NULL);
       data = anv_block_pool_map(job->pool, block, block_size);
       *data = block;
-      ASSERT(block >= 0);
+      assert(block >= 0);
       job->blocks[i] = block;
 
       block = anv_block_pool_alloc_back(job->pool, block_size);
       data = anv_block_pool_map(job->pool, block, block_size);
       *data = block;
-      ASSERT(block < 0);
+      assert(block < 0);
       job->back_blocks[i] = -block;
    }
 
    for (unsigned i = 0; i < BLOCKS_PER_THREAD; i++) {
       block = job->blocks[i];
       data = anv_block_pool_map(job->pool, block, block_size);
-      ASSERT(*data == block);
+      assert(*data == block);
 
       block = -job->back_blocks[i];
       data = anv_block_pool_map(job->pool, block, block_size);
-      ASSERT(*data == block);
+      assert(*data == block);
    }
 
    return NULL;
@@ -101,7 +102,7 @@ static void validate_monotonic(int32_t **blocks)
          break;
 
       /* That next element had better be higher than the previous highest */
-      ASSERT(blocks[min_thread_idx][next[min_thread_idx]] > highest);
+      assert(blocks[min_thread_idx][next[min_thread_idx]] > highest);
 
       highest = blocks[min_thread_idx][next[min_thread_idx]];
       next[min_thread_idx]++;

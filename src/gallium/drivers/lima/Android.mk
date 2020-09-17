@@ -31,7 +31,6 @@ LOCAL_SRC_FILES := \
 	ir/gp/lower.c \
 	ir/gp/nir.c \
 	ir/gp/node.c \
-	ir/gp/optimize.c \
 	ir/gp/regalloc.c \
 	ir/gp/reduce_scheduler.c \
 	ir/gp/scheduler.c \
@@ -67,15 +66,14 @@ LOCAL_SRC_FILES := \
 	lima_screen.c \
 	lima_screen.h \
 	lima_state.c \
-	lima_job.c \
-	lima_job.h \
+	lima_submit.c \
+	lima_submit.h \
 	lima_texture.c \
 	lima_texture.h \
 	lima_util.c \
 	lima_util.h \
 	lima_format.c \
-	lima_format.h \
-	lima_gpu.h
+	lima_format.h
 
 LOCAL_MODULE := libmesa_pipe_lima
 
@@ -88,11 +86,12 @@ LOCAL_STATIC_LIBRARIES := \
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 intermediates := $(call local-generated-sources-dir)
+prebuilt_intermediates := $(MESA_TOP)/prebuilt-intermediates
 
-$(intermediates)/lima_nir_algebraic.c: $(LOCAL_PATH)/ir/lima_nir_algebraic.py
+$(intermediates)/lima_nir_algebraic.c: $(prebuilt_intermediates)/lima/lima_nir_algebraic.c
 	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< -p $(MESA_TOP)/src/compiler/nir/ > $@
+	@cp -f $< $@
 
 LOCAL_GENERATED_SOURCES := \
 	$(intermediates)/lima_nir_algebraic.c \

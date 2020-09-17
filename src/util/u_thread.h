@@ -35,7 +35,7 @@
 
 #ifdef HAVE_PTHREAD
 #include <signal.h>
-#ifdef HAVE_PTHREAD_NP_H
+#ifdef PTHREAD_SETAFFINITY_IN_NP_HEADER
 #include <pthread_np.h>
 #endif
 #endif
@@ -45,10 +45,6 @@
 #endif
 
 #ifdef __FreeBSD__
-/* pthread_np.h -> sys/param.h -> machine/param.h
- * - defines ALIGN which clashes with our ALIGN
- */
-#undef ALIGN
 #define cpu_set_t cpuset_t
 #endif
 

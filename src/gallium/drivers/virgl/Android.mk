@@ -32,6 +32,8 @@ LOCAL_MODULE := libmesa_pipe_virgl
 
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 intermediates := $(call local-generated-sources-dir)
+prebuilt_intermediates := $(MESA_TOP)/prebuilt-intermediates
+
 LOCAL_GENERATED_SOURCES := $(intermediates)/virgl/virgl_driinfo.h
 
 GEN_DRIINFO_INPUTS := \
@@ -40,10 +42,9 @@ GEN_DRIINFO_INPUTS := \
 
 MERGE_DRIINFO := $(MESA_TOP)/src/util/merge_driinfo.py
 
-$(intermediates)/virgl/virgl_driinfo.h: $(MERGE_DRIINFO) $(GEN_DRIINFO_INPUTS)
+$(intermediates)/virgl/virgl_driinfo.h: $(prebuilt_intermediates)/virgl/virgl_driinfo.h
 	@mkdir -p $(dir $@)
-	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
-	$(hide) $(MESA_PYTHON2) $(MERGE_DRIINFO) $(GEN_DRIINFO_INPUTS) > $@ || ($(RM) $@; false)
+	@cp -f $< $@
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(intermediates)
 

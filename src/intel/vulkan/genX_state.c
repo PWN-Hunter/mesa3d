@@ -120,8 +120,7 @@ genX(init_device_state)(struct anv_device *device)
 
    anv_batch_emit(&batch, GENX(PIPELINE_SELECT), ps) {
 #if GEN_GEN >= 9
-      ps.MaskBits = GEN_GEN >= 12 ? 0x13 : 3;
-      ps.MediaSamplerDOPClockGateEnable = GEN_GEN >= 12;
+      ps.MaskBits = 3;
 #endif
       ps.PipelineSelection = _3D;
    }
@@ -237,22 +236,6 @@ genX(init_device_state)(struct anv_device *device)
          lri.RegisterOffset = GENX(CACHE_MODE_0_num);
          lri.DataDWord      = cache_mode_0;
       }
-   }
-
-   /* an unknown issue is causing vs push constants to become
-    * corrupted during object-level preemption. For now, restrict
-    * to command buffer level preemption to avoid rendering
-    * corruption.
-    */
-   uint32_t cs_chicken1;
-   anv_pack_struct(&cs_chicken1,
-                   GENX(CS_CHICKEN1),
-                   .ReplayMode = MidcmdbufferPreemption,
-                   .ReplayModeMask = true);
-
-   anv_batch_emit(&batch, GENX(MI_LOAD_REGISTER_IMM), lri) {
-      lri.RegisterOffset = GENX(CS_CHICKEN1_num);
-      lri.DataDWord      = cs_chicken1;
    }
 #endif
 

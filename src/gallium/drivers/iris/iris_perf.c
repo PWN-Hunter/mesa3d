@@ -22,6 +22,7 @@
 
 #include "iris_perf.h"
 #include "iris_context.h"
+#include "perf/gen_perf_regs.h"
 
 static void *
 iris_oa_bo_alloc(void *bufmgr, const char *name, uint64_t size)
@@ -45,7 +46,7 @@ iris_perf_emit_mi_report_perf_count(void *c,
 {
    struct iris_context *ice = c;
    struct iris_batch *batch = &ice->batches[IRIS_BATCH_RENDER];
-   batch->screen->vtbl.emit_mi_report_perf_count(batch, bo, offset_in_bytes, report_id);
+   ice->vtbl.emit_mi_report_perf_count(batch, bo, offset_in_bytes, report_id);
 }
 
 static void
@@ -63,10 +64,10 @@ iris_perf_store_register_mem(void *ctx, void *bo,
    struct iris_context *ice = ctx;
    struct iris_batch *batch = &ice->batches[IRIS_BATCH_RENDER];
    if (reg_size == 8) {
-      batch->screen->vtbl.store_register_mem64(batch, reg, bo, offset, false);
+      ice->vtbl.store_register_mem64(batch, reg, bo, offset, false);
    } else {
       assert(reg_size == 4);
-      batch->screen->vtbl.store_register_mem32(batch, reg, bo, offset, false);
+      ice->vtbl.store_register_mem32(batch, reg, bo, offset, false);
    }
 }
 

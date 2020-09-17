@@ -25,7 +25,7 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 endif
 
 ir3_nir_trig_deps := \
-	$(MESA_TOP)/src/freedreno/ir3/ir3_nir_trig.py \
+	$(LOCAL_PATH)/ir3/ir3_nir_trig.py \
 	$(MESA_TOP)/src/compiler/nir/nir_algebraic.py
 
 ir3_nir_imul_deps := \
@@ -33,14 +33,14 @@ ir3_nir_imul_deps := \
 	$(MESA_TOP)/src/compiler/nir/nir_algebraic.py
 
 intermediates := $(call local-generated-sources-dir)
+prebuilt_intermediates := $(MESA_TOP)/prebuilt-intermediates
 
-$(intermediates)/ir3/ir3_nir_trig.c: $(ir3_nir_trig_deps)
-	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< -p $(MESA_TOP)/src/compiler/nir > $@
+$(intermediates)/ir3/ir3_nir_trig.c: $(prebuilt_intermediates)/ir3/ir3_nir_trig.c
+	cp -a $< $@
 
-$(intermediates)/ir3/ir3_nir_imul.c: $(ir3_nir_imul_deps)
+$(intermediates)/ir3/ir3_nir_imul.c: $(prebuilt_intermediates)/ir3/ir3_nir_imul.c
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< -p $(MESA_TOP)/src/compiler/nir > $@
+	cp -a $< $@
 
 LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/, \
 	$(ir3_GENERATED_FILES))

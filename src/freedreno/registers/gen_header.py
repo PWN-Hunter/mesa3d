@@ -39,7 +39,7 @@ class Field(object):
 		self.shr = shr
 		self.type = type
 
-		builtin_types = [ None, "a3xx_regid", "boolean", "uint", "hex", "int", "fixed", "ufixed", "float", "address", "waddress" ]
+		builtin_types = [ None, "boolean", "uint", "hex", "int", "fixed", "ufixed", "float", "address", "waddress" ]
 
 		if low < 0 or low > 31:
 			raise parser.error("low attribute out of range: %d" % low)
@@ -61,7 +61,7 @@ class Field(object):
 		elif self.type == "boolean":
 			type = "bool"
 			val = var_name
-		elif self.type == "uint" or self.type == "hex" or self.type == "a3xx_regid":
+		elif self.type == "uint" or self.type == "hex":
 			type = "uint32_t"
 			val = var_name
 		elif self.type == "int":
@@ -126,11 +126,8 @@ class Bitset(object):
 		if prefix == None:
 			prefix = self.name
 
-		value_name = "dword"
 		print("struct %s {" % prefix)
 		for f in self.fields:
-			if f.type == "waddress":
-				value_name = "qword"
 			if f.type in [ "address", "waddress" ]:
 				tab_to("    __bo_type", "bo;")
 				tab_to("    uint32_t", "bo_offset;")
@@ -140,12 +137,8 @@ class Bitset(object):
 			type, val = f.ctype("var")
 
 			tab_to("    %s" % type, "%s;" % name)
-		if value_name == "qword":
-			tab_to("    uint64_t", "unknown;")
-			tab_to("    uint64_t", "qword;")
-		else:
-			tab_to("    uint32_t", "unknown;")
-			tab_to("    uint32_t", "dword;")
+		tab_to("    uint32_t", "unknown;")
+		tab_to("    uint32_t", "dword;")
 		print("};\n")
 
 		address = None;
@@ -183,7 +176,7 @@ class Bitset(object):
 			else:
 				type, val = f.ctype("fields.%s" % field_name(prefix, f.name))
 				print("            (%-40s << %2d) |" % (val, f.low))
-		print("            fields.unknown | fields.%s," % (value_name,))
+		print("            fields.unknown | fields.dword,")
 
 		if address:
 			print("        .is_address = true,")

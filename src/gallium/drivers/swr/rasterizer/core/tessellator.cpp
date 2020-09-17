@@ -18,7 +18,7 @@
 */
 
 #include "tessellator.hpp"
-#if defined(_MSC_VER)
+#if defined(_WIN32) || defined(_WIN64)
 #include <math.h> // ceil
 #else
 #include <cmath>
@@ -35,7 +35,7 @@
 //---------------------------------------------------------------------------------------------------------------------------------
 // isNaN
 //---------------------------------------------------------------------------------------------------------------------------------
-static bool tess_isNaN( float a )
+bool isNaN( float a )
 {
     static const int exponentMask = 0x7f800000;
     static const int mantissaMask = 0x007fffff;
@@ -46,7 +46,7 @@ static bool tess_isNaN( float a )
 //---------------------------------------------------------------------------------------------------------------------------------
 // flush (denorm)
 //---------------------------------------------------------------------------------------------------------------------------------
-static float tess_flush( float a )
+float flush( float a )
 {
     static const int minNormalizedFloat = 0x00800000;
     static const int signBit = 0x80000000;
@@ -63,11 +63,11 @@ static float tess_flush( float a )
 //---------------------------------------------------------------------------------------------------------------------------------
 // IEEE754R min
 //---------------------------------------------------------------------------------------------------------------------------------
-static float tess_fmin( float a, float b )
+float fmin( float a, float b )
 {
-    float _a = tess_flush( a );
-    float _b = tess_flush( b );
-    if( tess_isNaN( _b ) )
+    float _a = flush( a );
+    float _b = flush( b );
+    if( isNaN( _b ) )
     {
         return a;
     }
@@ -81,12 +81,12 @@ static float tess_fmin( float a, float b )
 //---------------------------------------------------------------------------------------------------------------------------------
 // IEEE754R max
 //---------------------------------------------------------------------------------------------------------------------------------
-static float tess_fmax( float a, float b )
+float fmax( float a, float b )
 {
-    float _a = tess_flush( a );
-    float _b = tess_flush( b );
+    float _a = flush( a );
+    float _b = flush( b );
 
-    if( tess_isNaN( _b ) )
+    if( isNaN( _b ) )
     {
         return a;
     }
@@ -179,9 +179,7 @@ INT32 floatToIDotF( const float& input )
         if (iShift >= 0)
         {
 //            assert( iShift < 32 );
-#if defined(_MSC_VER)
 #pragma warning( suppress : 4293 )
-#endif
             _fxpMaxPosValueFloat -= INT32( 1 ) << iShift;
         }
 
@@ -201,9 +199,7 @@ INT32 floatToIDotF( const float& input )
         if (iShift >= 0)
         {
 //            assert( iShift < 32 );
-#if defined(_MSC_VER)
 #pragma warning( suppress : 4293 )
-#endif
             _fxpMaxPosValueFloat -= INT32( 1 ) << iShift;
         }
 
@@ -546,7 +542,7 @@ void CHWTessellator::QuadProcessTessFactors( float tessFactor_Ueq0, float tessFa
     }
 
     // Clamp edge TessFactors
-    float lowerBound = 0.0, upperBound = 0.0;
+    float lowerBound, upperBound;
     switch(m_originalPartitioning)
     {
         case D3D11_TESSELLATOR_PARTITIONING_INTEGER:
@@ -566,10 +562,10 @@ void CHWTessellator::QuadProcessTessFactors( float tessFactor_Ueq0, float tessFa
             break;
     }
 
-    tessFactor_Ueq0 = tess_fmin( upperBound, tess_fmax( lowerBound, tessFactor_Ueq0 ) );
-    tessFactor_Veq0 = tess_fmin( upperBound, tess_fmax( lowerBound, tessFactor_Veq0 ) );
-    tessFactor_Ueq1 = tess_fmin( upperBound, tess_fmax( lowerBound, tessFactor_Ueq1 ) );
-    tessFactor_Veq1 = tess_fmin( upperBound, tess_fmax( lowerBound, tessFactor_Veq1 ) );
+    tessFactor_Ueq0 = fmin( upperBound, fmax( lowerBound, tessFactor_Ueq0 ) );
+    tessFactor_Veq0 = fmin( upperBound, fmax( lowerBound, tessFactor_Veq0 ) );
+    tessFactor_Ueq1 = fmin( upperBound, fmax( lowerBound, tessFactor_Ueq1 ) );
+    tessFactor_Veq1 = fmin( upperBound, fmax( lowerBound, tessFactor_Veq1 ) );
 
     if( HWIntegerPartitioning()) // pow2 or integer, round to next int (hw doesn't care about pow2 distinction)
     {
@@ -598,8 +594,8 @@ void CHWTessellator::QuadProcessTessFactors( float tessFactor_Ueq0, float tessFa
         }
     }
 
-    insideTessFactor_U = tess_fmin( upperBound, tess_fmax( lowerBound, insideTessFactor_U ) );
-    insideTessFactor_V = tess_fmin( upperBound, tess_fmax( lowerBound, insideTessFactor_V ) );
+    insideTessFactor_U = fmin( upperBound, fmax( lowerBound, insideTessFactor_U ) );
+    insideTessFactor_V = fmin( upperBound, fmax( lowerBound, insideTessFactor_V ) );
     // Note the above clamps map NaN to lowerBound
 
 
@@ -1064,7 +1060,7 @@ void CHWTessellator::TriProcessTessFactors( float tessFactor_Ueq0, float tessFac
     }
 
     // Clamp edge TessFactors
-    float lowerBound = 0.0, upperBound = 0.0;
+    float lowerBound, upperBound;
     switch(m_originalPartitioning)
     {
         case D3D11_TESSELLATOR_PARTITIONING_INTEGER:
@@ -1084,9 +1080,9 @@ void CHWTessellator::TriProcessTessFactors( float tessFactor_Ueq0, float tessFac
             break;
     }
 
-    tessFactor_Ueq0 = tess_fmin( upperBound, tess_fmax( lowerBound, tessFactor_Ueq0 ) );
-    tessFactor_Veq0 = tess_fmin( upperBound, tess_fmax( lowerBound, tessFactor_Veq0 ) );
-    tessFactor_Weq0 = tess_fmin( upperBound, tess_fmax( lowerBound, tessFactor_Weq0 ) );
+    tessFactor_Ueq0 = fmin( upperBound, fmax( lowerBound, tessFactor_Ueq0 ) );
+    tessFactor_Veq0 = fmin( upperBound, fmax( lowerBound, tessFactor_Veq0 ) );
+    tessFactor_Weq0 = fmin( upperBound, fmax( lowerBound, tessFactor_Weq0 ) );
 
     if( HWIntegerPartitioning()) // pow2 or integer, round to next int (hw doesn't care about pow2 distinction)
     {
@@ -1110,7 +1106,7 @@ void CHWTessellator::TriProcessTessFactors( float tessFactor_Ueq0, float tessFac
         }
     }
 
-    insideTessFactor = tess_fmin( upperBound, tess_fmax( lowerBound, insideTessFactor ) );
+    insideTessFactor = fmin( upperBound, fmax( lowerBound, insideTessFactor ) );
     // Note the above clamps map NaN to lowerBound
 
     if( HWIntegerPartitioning()) // pow2 or integer, round to next int (hw doesn't care about pow2 distinction)
@@ -1439,7 +1435,7 @@ void CHWTessellator::IsoLineProcessTessFactors( float TessFactor_V_LineDensity, 
     }
 
     // Clamp edge TessFactors
-    float lowerBound = 0.0, upperBound = 0.0;
+    float lowerBound, upperBound;
     switch(m_originalPartitioning)
     {
         case D3D11_TESSELLATOR_PARTITIONING_INTEGER:
@@ -1459,9 +1455,9 @@ void CHWTessellator::IsoLineProcessTessFactors( float TessFactor_V_LineDensity, 
             break;
     }
 
-    TessFactor_V_LineDensity = tess_fmin( D3D11_TESSELLATOR_MAX_ISOLINE_DENSITY_TESSELLATION_FACTOR,
-                                    tess_fmax( D3D11_TESSELLATOR_MIN_ISOLINE_DENSITY_TESSELLATION_FACTOR, TessFactor_V_LineDensity ) );
-    TessFactor_U_LineDetail = tess_fmin( upperBound, tess_fmax( lowerBound, TessFactor_U_LineDetail ) );
+    TessFactor_V_LineDensity = fmin( D3D11_TESSELLATOR_MAX_ISOLINE_DENSITY_TESSELLATION_FACTOR,
+                                    fmax( D3D11_TESSELLATOR_MIN_ISOLINE_DENSITY_TESSELLATION_FACTOR, TessFactor_V_LineDensity ) );
+    TessFactor_U_LineDetail = fmin( upperBound, fmax( lowerBound, TessFactor_U_LineDetail ) );
 
     // Reset our vertex and index buffers.  We have enough storage for the max tessFactor.
     m_NumPoints = 0;
@@ -2240,13 +2236,15 @@ void CHLSLTessellator::QuadHLSLProcessTessFactors( float tessFactor_Ueq0, float 
     // Process outside tessFactors
     float outsideTessFactor[QUAD_EDGES] = {tessFactor_Ueq0, tessFactor_Veq0, tessFactor_Ueq1, tessFactor_Veq1};
     int edge, axis;
-    TESSELLATOR_PARITY insideTessFactorParity[QUAD_AXES];
+    TESSELLATOR_PARITY insideTessFactorParity[QUAD_AXES], outsideTessFactorParity[QUAD_EDGES];
     if( Pow2Partitioning() || IntegerPartitioning() )
     {
         for( edge = 0; edge < QUAD_EDGES; edge++ )
         {
             RoundUpTessFactor(outsideTessFactor[edge]);
             ClampTessFactor(outsideTessFactor[edge]); // clamp unbounded user input based on tessellation mode
+            int edgeEven = isEven(outsideTessFactor[edge]);
+            outsideTessFactorParity[edge] = edgeEven ? TESSELLATOR_PARITY_EVEN : TESSELLATOR_PARITY_ODD;
         }
     }
     else
@@ -2255,6 +2253,7 @@ void CHLSLTessellator::QuadHLSLProcessTessFactors( float tessFactor_Ueq0, float 
         for( edge = 0; edge < QUAD_EDGES; edge++ )
         {
             ClampTessFactor(outsideTessFactor[edge]); // clamp unbounded user input based on tessellation mode
+            outsideTessFactorParity[edge] = m_originalParity;
         }
     }
 
@@ -2265,10 +2264,10 @@ void CHLSLTessellator::QuadHLSLProcessTessFactors( float tessFactor_Ueq0, float 
         switch( m_insideTessFactorReduction )
         {
         case D3D11_TESSELLATOR_REDUCTION_MIN:
-            insideTessFactor[U] = tess_fmin(tess_fmin(tessFactor_Veq0,tessFactor_Veq1),tess_fmin(tessFactor_Ueq0,tessFactor_Ueq1));
+            insideTessFactor[U] = fmin(fmin(tessFactor_Veq0,tessFactor_Veq1),fmin(tessFactor_Ueq0,tessFactor_Ueq1));
             break;
         case D3D11_TESSELLATOR_REDUCTION_MAX:
-            insideTessFactor[U] = tess_fmax(tess_fmax(tessFactor_Veq0,tessFactor_Veq1),tess_fmax(tessFactor_Ueq0,tessFactor_Ueq1));
+            insideTessFactor[U] = fmax(fmax(tessFactor_Veq0,tessFactor_Veq1),fmax(tessFactor_Ueq0,tessFactor_Ueq1));
             break;
         case D3D11_TESSELLATOR_REDUCTION_AVERAGE:
             insideTessFactor[U] = (tessFactor_Veq0 + tessFactor_Veq1 + tessFactor_Ueq0 + tessFactor_Ueq1) / 4;
@@ -2305,11 +2304,11 @@ void CHLSLTessellator::QuadHLSLProcessTessFactors( float tessFactor_Ueq0, float 
         {
             if(D3D11_TESSELLATOR_REDUCTION_MAX == m_insideTessFactorReduction)
             {
-                insideTessFactor[U] = tess_fmin(FLOAT_THREE,tess_fmax(tess_fmax(tessFactor_Veq0,tessFactor_Veq1),tess_fmax(tessFactor_Ueq0,tessFactor_Ueq1)));
+                insideTessFactor[U] = fmin(FLOAT_THREE,fmax(fmax(tessFactor_Veq0,tessFactor_Veq1),fmax(tessFactor_Ueq0,tessFactor_Ueq1)));
             }
             else
             {
-                insideTessFactor[U] = tess_fmin(FLOAT_THREE,(tessFactor_Veq0 + tessFactor_Veq1 + tessFactor_Ueq0 + tessFactor_Ueq1) / 4);
+                insideTessFactor[U] = fmin(FLOAT_THREE,(tessFactor_Veq0 + tessFactor_Veq1 + tessFactor_Ueq0 + tessFactor_Ueq1) / 4);
             }
             ClampTessFactor(insideTessFactor[U]); // clamp reduction result that is based on unbounded user input
             m_LastUnRoundedComputedTessFactors[4] = m_LastUnRoundedComputedTessFactors[5] = insideTessFactor[U]; // Save off TessFactors so they can be returned to app
@@ -2327,12 +2326,12 @@ void CHLSLTessellator::QuadHLSLProcessTessFactors( float tessFactor_Ueq0, float 
         switch( m_insideTessFactorReduction )
         {
         case D3D11_TESSELLATOR_REDUCTION_MIN:
-            insideTessFactor[U] = tess_fmin(tessFactor_Veq0,tessFactor_Veq1);
-            insideTessFactor[V] = tess_fmin(tessFactor_Ueq0,tessFactor_Ueq1);
+            insideTessFactor[U] = fmin(tessFactor_Veq0,tessFactor_Veq1);
+            insideTessFactor[V] = fmin(tessFactor_Ueq0,tessFactor_Ueq1);
             break;
         case D3D11_TESSELLATOR_REDUCTION_MAX:
-            insideTessFactor[U] = tess_fmax(tessFactor_Veq0,tessFactor_Veq1);
-            insideTessFactor[V] = tess_fmax(tessFactor_Ueq0,tessFactor_Ueq1);
+            insideTessFactor[U] = fmax(tessFactor_Veq0,tessFactor_Veq1);
+            insideTessFactor[V] = fmax(tessFactor_Ueq0,tessFactor_Ueq1);
             break;
         case D3D11_TESSELLATOR_REDUCTION_AVERAGE:
             insideTessFactor[U] = (tessFactor_Veq0 + tessFactor_Veq1) / 2;
@@ -2376,11 +2375,11 @@ void CHLSLTessellator::QuadHLSLProcessTessFactors( float tessFactor_Ueq0, float 
         {
             if(D3D11_TESSELLATOR_REDUCTION_MAX == m_insideTessFactorReduction)
             {
-                insideTessFactor[U] = tess_fmin(FLOAT_THREE,tess_fmax(tessFactor_Veq0,tessFactor_Veq1));
+                insideTessFactor[U] = fmin(FLOAT_THREE,fmax(tessFactor_Veq0,tessFactor_Veq1));
             }
             else
             {
-                insideTessFactor[U] = tess_fmin(FLOAT_THREE,(tessFactor_Veq0 + tessFactor_Veq1) / 2);
+                insideTessFactor[U] = fmin(FLOAT_THREE,(tessFactor_Veq0 + tessFactor_Veq1) / 2);
             }
             ClampTessFactor(insideTessFactor[U]); // clamp reduction result that is based on unbounded user input
             m_LastUnRoundedComputedTessFactors[4] = insideTessFactor[U]; // Save off TessFactors so they can be returned to app
@@ -2396,11 +2395,11 @@ void CHLSLTessellator::QuadHLSLProcessTessFactors( float tessFactor_Ueq0, float 
         {
             if(D3D11_TESSELLATOR_REDUCTION_MAX == m_insideTessFactorReduction)
             {
-                insideTessFactor[V] = tess_fmin(FLOAT_THREE,tess_fmax(tessFactor_Ueq0,tessFactor_Ueq1));
+                insideTessFactor[V] = fmin(FLOAT_THREE,fmax(tessFactor_Ueq0,tessFactor_Ueq1));
             }
             else
             {
-                insideTessFactor[V] = tess_fmin(FLOAT_THREE,(tessFactor_Ueq0 + tessFactor_Ueq1) / 2);
+                insideTessFactor[V] = fmin(FLOAT_THREE,(tessFactor_Ueq0 + tessFactor_Ueq1) / 2);
             }
             ClampTessFactor(insideTessFactor[V]);// clamp reduction result that is based on unbounded user input
             m_LastUnRoundedComputedTessFactors[5] = insideTessFactor[V]; // Save off TessFactors so they can be returned to app
@@ -2419,7 +2418,7 @@ void CHLSLTessellator::QuadHLSLProcessTessFactors( float tessFactor_Ueq0, float 
                 // as much as the side with the minimum TessFactor.  Prevents snapping to edge.
                 if( (insideTessFactor[axis] < FLOAT_THREE) && (insideTessFactor[axis] < insideTessFactor[(axis+1)&0x1]))
                 {
-                    insideTessFactor[axis] = tess_fmin(insideTessFactor[(axis+1)&0x1],FLOAT_THREE);
+                    insideTessFactor[axis] = fmin(insideTessFactor[(axis+1)&0x1],FLOAT_THREE);
                     m_LastUnRoundedComputedTessFactors[4+axis] = insideTessFactor[axis]; // Save off TessFactors so they can be returned to app
                 }
             }
@@ -2501,10 +2500,10 @@ void CHLSLTessellator::TriHLSLProcessTessFactors( float tessFactor_Ueq0, float t
     switch( m_insideTessFactorReduction )
     {
     case D3D11_TESSELLATOR_REDUCTION_MIN:
-        insideTessFactor = tess_fmin(tess_fmin(tessFactor_Ueq0,tessFactor_Veq0),tessFactor_Weq0);
+        insideTessFactor = fmin(fmin(tessFactor_Ueq0,tessFactor_Veq0),tessFactor_Weq0);
         break;
     case D3D11_TESSELLATOR_REDUCTION_MAX:
-        insideTessFactor = tess_fmax(tess_fmax(tessFactor_Ueq0,tessFactor_Veq0),tessFactor_Weq0);
+        insideTessFactor = fmax(fmax(tessFactor_Ueq0,tessFactor_Veq0),tessFactor_Weq0);
         break;
     case D3D11_TESSELLATOR_REDUCTION_AVERAGE:
         insideTessFactor = (tessFactor_Ueq0 + tessFactor_Veq0 + tessFactor_Weq0) / 3;
@@ -2513,7 +2512,7 @@ void CHLSLTessellator::TriHLSLProcessTessFactors( float tessFactor_Ueq0, float t
 
     // Scale inside TessFactor based on user scale factor.
     ClampFloatTessFactorScale(insideTessFactorScale); // clamp scale value to [0..1], NaN->0
-    insideTessFactor = insideTessFactor*tess_fmin(FLOAT_ONE,insideTessFactorScale);
+    insideTessFactor = insideTessFactor*fmin(FLOAT_ONE,insideTessFactorScale);
 
     ClampTessFactor(insideTessFactor); // clamp reduction + scale result that is based on unbounded user input
     m_LastUnRoundedComputedTessFactors[3] = insideTessFactor;// Save off TessFactors so they can be returned to app
@@ -2536,11 +2535,11 @@ void CHLSLTessellator::TriHLSLProcessTessFactors( float tessFactor_Ueq0, float t
         // in using avg or max (and ignore inside TessFactor scaling) until it is at least 3.
         if(D3D11_TESSELLATOR_REDUCTION_MAX == m_insideTessFactorReduction)
         {
-            insideTessFactor = tess_fmin(FLOAT_THREE,tess_fmax(tessFactor_Ueq0,tess_fmax(tessFactor_Veq0,tessFactor_Weq0)));
+            insideTessFactor = fmin(FLOAT_THREE,fmax(tessFactor_Ueq0,fmax(tessFactor_Veq0,tessFactor_Weq0)));
         }
         else
         {
-            insideTessFactor = tess_fmin(FLOAT_THREE,(tessFactor_Ueq0 + tessFactor_Veq0 + tessFactor_Weq0) / 3);
+            insideTessFactor = fmin(FLOAT_THREE,(tessFactor_Ueq0 + tessFactor_Veq0 + tessFactor_Weq0) / 3);
         }
         ClampTessFactor(insideTessFactor); // clamp reduction result that is based on unbounded user input
         m_LastUnRoundedComputedTessFactors[3] = insideTessFactor;// Save off TessFactors so they can be returned to app
@@ -2589,10 +2588,18 @@ void CHLSLTessellator::IsoLineHLSLProcessTessFactors( float TessFactor_V_LineDen
 
     m_LastUnRoundedComputedTessFactors[1] = TessFactor_U_LineDetail;    // Save off TessFactors so they can be returned to app
 
+    TESSELLATOR_PARITY parity;
     if(Pow2Partitioning()||IntegerPartitioning())
     {
         RoundUpTessFactor(TessFactor_U_LineDetail);
+        parity = isEven(TessFactor_U_LineDetail) ? TESSELLATOR_PARITY_EVEN : TESSELLATOR_PARITY_ODD;
     }
+    else
+    {
+        parity = m_originalParity;
+    }
+
+    FXP fxpTessFactor_U_LineDetail = floatToFixed(TessFactor_U_LineDetail);
 
     OverridePartitioning(D3D11_TESSELLATOR_PARTITIONING_INTEGER);
 
@@ -2615,19 +2622,19 @@ void CHLSLTessellator::ClampTessFactor(float& TessFactor)
 {
     if( Pow2Partitioning() )
     {
-        TessFactor = tess_fmin( D3D11_TESSELLATOR_MAX_EVEN_TESSELLATION_FACTOR, tess_fmax( TessFactor, D3D11_TESSELLATOR_MIN_ODD_TESSELLATION_FACTOR) );
+        TessFactor = fmin( D3D11_TESSELLATOR_MAX_EVEN_TESSELLATION_FACTOR, fmax( TessFactor, D3D11_TESSELLATOR_MIN_ODD_TESSELLATION_FACTOR) );
     }
     else if( IntegerPartitioning() )
     {
-        TessFactor = tess_fmin( D3D11_TESSELLATOR_MAX_TESSELLATION_FACTOR, tess_fmax( TessFactor, D3D11_TESSELLATOR_MIN_ODD_TESSELLATION_FACTOR) );
+        TessFactor = fmin( D3D11_TESSELLATOR_MAX_TESSELLATION_FACTOR, fmax( TessFactor, D3D11_TESSELLATOR_MIN_ODD_TESSELLATION_FACTOR) );
     }
     else if( Odd() )
     {
-        TessFactor = tess_fmin( D3D11_TESSELLATOR_MAX_ODD_TESSELLATION_FACTOR, tess_fmax( TessFactor, D3D11_TESSELLATOR_MIN_ODD_TESSELLATION_FACTOR) );
+        TessFactor = fmin( D3D11_TESSELLATOR_MAX_ODD_TESSELLATION_FACTOR, fmax( TessFactor, D3D11_TESSELLATOR_MIN_ODD_TESSELLATION_FACTOR) );
     }
     else // even
     {
-        TessFactor = tess_fmin( D3D11_TESSELLATOR_MAX_EVEN_TESSELLATION_FACTOR, tess_fmax( TessFactor, D3D11_TESSELLATOR_MIN_EVEN_TESSELLATION_FACTOR) );
+        TessFactor = fmin( D3D11_TESSELLATOR_MAX_EVEN_TESSELLATION_FACTOR, fmax( TessFactor, D3D11_TESSELLATOR_MIN_EVEN_TESSELLATION_FACTOR) );
     }
 }
 

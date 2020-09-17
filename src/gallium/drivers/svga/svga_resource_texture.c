@@ -458,15 +458,10 @@ svga_texture_transfer_map_direct(struct svga_context *svga,
    {
       SVGA3dSize baseLevelSize;
       uint8_t *map;
-      boolean retry, rebind;
+      boolean retry;
       unsigned offset, mip_width, mip_height;
-      struct svga_winsys_context *swc = svga->swc;
 
-      if (swc->force_coherent) {
-         usage |= PIPE_TRANSFER_PERSISTENT | PIPE_TRANSFER_COHERENT;
-      }
-
-      map = swc->surface_map(swc, surf, usage, &retry, &rebind);
+      map = svga->swc->surface_map(svga->swc, surf, usage, &retry);
       if (map == NULL && retry) {
          /*
           * At this point, the svga_surfaces_flush() should already have
@@ -474,18 +469,7 @@ svga_texture_transfer_map_direct(struct svga_context *svga,
           */
          svga->hud.surface_write_flushes++;
          svga_context_flush(svga, NULL);
-         map = swc->surface_map(swc, surf, usage, &retry, &rebind);
-      }
-      if (map && rebind) {
-         enum pipe_error ret;
-
-         ret = SVGA3D_BindGBSurface(swc, surf);
-         if (ret != PIPE_OK) {
-            svga_context_flush(svga, NULL);
-            ret = SVGA3D_BindGBSurface(swc, surf);
-            assert(ret == PIPE_OK);
-         }
-         svga_context_flush(svga, NULL);
+         map = svga->swc->surface_map(svga->swc, surf, usage, &retry);
       }
 
       /*
@@ -712,6 +696,15 @@ svga_texture_surface_unmap(struct svga_context *svga,
          svga_context_flush(svga, NULL);
          ret = SVGA3D_BindGBSurface(swc, surf);
          assert(ret == PIPE_OK);
+      }
+      if (swc->force_coherent) {
+         ret = SVGA3D_UpdateGBSurface(swc, surf);
+         if (ret != PIPE_OK) {
+            /* flush and retry */
+            svga_context_flush(svga, NULL);
+            ret = SVGA3D_UpdateGBSurface(swc, surf);
+            assert(ret == PIPE_OK);
+         }
       }
    }
 }

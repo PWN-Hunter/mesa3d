@@ -30,19 +30,10 @@
 #ifdef HAVE_ENDIAN_H
 #include <endian.h>
 
-/* glibc */
-#if defined(__BYTE_ORDER) && (__BYTE_ORDER == __LITTLE_ENDIAN)
+#if __BYTE_ORDER == __LITTLE_ENDIAN
 # define UTIL_ARCH_LITTLE_ENDIAN 1
 # define UTIL_ARCH_BIG_ENDIAN 0
-#elif defined(__BYTE_ORDER) && (__BYTE_ORDER == __BIG_ENDIAN)
-# define UTIL_ARCH_LITTLE_ENDIAN 0
-# define UTIL_ARCH_BIG_ENDIAN 1
-#endif
-
-#if defined(BYTE_ORDER) && (BYTE_ORDER == LITTLE_ENDIAN)
-# define UTIL_ARCH_LITTLE_ENDIAN 1
-# define UTIL_ARCH_BIG_ENDIAN 0
-#elif defined(BYTE_ORDER) && (BYTE_ORDER == BIG_ENDIAN)
+#elif __BYTE_ORDER == __BIG_ENDIAN
 # define UTIL_ARCH_LITTLE_ENDIAN 0
 # define UTIL_ARCH_BIG_ENDIAN 1
 #endif
@@ -69,8 +60,8 @@
 # define UTIL_ARCH_BIG_ENDIAN 1
 #endif
 
-#elif defined(__NetBSD__) || defined(__FreeBSD__) || \
-      defined(__DragonFly__)
+#elif defined(__OpenBSD__) || defined(__NetBSD__) || \
+      defined(__FreeBSD__) || defined(__DragonFly__)
 #include <sys/types.h>
 #include <machine/endian.h>
 

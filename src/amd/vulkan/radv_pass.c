@@ -59,32 +59,6 @@ radv_render_pass_add_subpass_dep(struct radv_render_pass *pass,
 	}
 }
 
-static bool
-radv_pass_has_layout_transitions(const struct radv_render_pass *pass)
-{
-	for (unsigned i = 0; i < pass->subpass_count; i++) {
-		const struct radv_subpass *subpass = &pass->subpasses[i];
-		for (unsigned j = 0; j < subpass->attachment_count; j++) {
-			const uint32_t a = subpass->attachments[j].attachment;
-			if (a == VK_ATTACHMENT_UNUSED)
-				continue;
-
-			uint32_t initial_layout = pass->attachments[a].initial_layout;
-			uint32_t stencil_initial_layout = pass->attachments[a].stencil_initial_layout;
-			uint32_t final_layout = pass->attachments[a].final_layout;
-			uint32_t stencil_final_layout = pass->attachments[a].stencil_final_layout;
-
-			if (subpass->attachments[j].layout != initial_layout ||
-			    subpass->attachments[j].layout != stencil_initial_layout ||
-			    subpass->attachments[j].layout != final_layout ||
-			    subpass->attachments[j].layout != stencil_final_layout)
-				return true;
-		}
-	}
-
-	return false;
-}
-
 static void
 radv_render_pass_add_implicit_deps(struct radv_render_pass *pass,
 				   bool has_ingoing_dep, bool has_outgoing_dep)
@@ -94,9 +68,7 @@ radv_render_pass_add_implicit_deps(struct radv_render_pass *pass,
 	*    If there is no subpass dependency from VK_SUBPASS_EXTERNAL to the
 	*    first subpass that uses an attachment, then an implicit subpass
 	*    dependency exists from VK_SUBPASS_EXTERNAL to the first subpass it is
-	*    used in. The implicit subpass dependency only exists if there
-	*    exists an automatic layout transition away from initialLayout.
-	*    The subpass dependency operates as if defined with the
+	*    used in. The subpass dependency operates as if defined with the
 	*    following parameters:
 	*
 	*    VkSubpassDependency implicitDependency = {
@@ -116,10 +88,8 @@ radv_render_pass_add_implicit_deps(struct radv_render_pass *pass,
 	*    Similarly, if there is no subpass dependency from the last subpass
 	*    that uses an attachment to VK_SUBPASS_EXTERNAL, then an implicit
 	*    subpass dependency exists from the last subpass it is used in to
-	*    VK_SUBPASS_EXTERNAL. The implicit subpass dependency only exists
-	*    if there exists an automatic layout transition into finalLayout.
-	*    The subpass dependency operates as if defined with the following
-	*    parameters:
+	*    VK_SUBPASS_EXTERNAL. The subpass dependency operates as if defined
+	*    with the following parameters:
 	*
 	*    VkSubpassDependency implicitDependency = {
 	*        .srcSubpass = lastSubpass; // Last subpass attachment is used in
@@ -135,12 +105,6 @@ radv_render_pass_add_implicit_deps(struct radv_render_pass *pass,
 	*        .dependencyFlags = 0;
 	*    };
 	*/
-
-	/* Implicit subpass dependencies only make sense if automatic layout
-	 * transitions are performed.
-	 */
-	if (!radv_pass_has_layout_transitions(pass))
-		return;
 
 	if (!has_ingoing_dep) {
 		const VkSubpassDependency2KHR implicit_ingoing_dep = {

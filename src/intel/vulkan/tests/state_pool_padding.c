@@ -21,8 +21,9 @@
  * IN THE SOFTWARE.
  */
 
+#undef NDEBUG
+
 #include "anv_private.h"
-#include "test_common.h"
 
 int main(int argc, char **argv)
 {
@@ -49,30 +50,30 @@ int main(int argc, char **argv)
    struct anv_state state = anv_state_pool_alloc(&state_pool, pool_size, 16);
 
    /* The pool must have grown */
-   ASSERT(bp->size > pool_size);
+   assert(bp->size > pool_size);
 
    /* And the state must have been allocated at the end of the original size  */
-   ASSERT(state.offset == pool_size);
+   assert(state.offset == pool_size);
 
    /* A new allocation that fits into the returned empty space should have an
     * offset within the original pool size
     */
    state = anv_state_pool_alloc(&state_pool, 4096, 16);
-   ASSERT(state.offset + state.alloc_size <= pool_size);
+   assert(state.offset + state.alloc_size <= pool_size);
 
    /* We should be able to allocate pool->block_size'd chunks in the returned area
     */
    int left_chunks = pool_size / 4096 - 2;
    for (int i = 0; i < left_chunks; i++) {
       state = anv_state_pool_alloc(&state_pool, 4096, 16);
-      ASSERT(state.offset + state.alloc_size <= pool_size);
+      assert(state.offset + state.alloc_size <= pool_size);
    }
 
    /* Now the next chunk to be allocated should make the pool grow again */
    pool_size = bp->size;
    state = anv_state_pool_alloc(&state_pool, 4096, 16);
-   ASSERT(bp->size > pool_size);
-   ASSERT(state.offset == pool_size);
+   assert(bp->size > pool_size);
+   assert(state.offset == pool_size);
 
    anv_state_pool_finish(&state_pool);
 }

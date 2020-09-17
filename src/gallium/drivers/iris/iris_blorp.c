@@ -164,7 +164,7 @@ blorp_alloc_binding_table(struct blorp_batch *blorp_batch,
 
    iris_use_pinned_bo(batch, binder->bo, false);
 
-   batch->screen->vtbl.update_surface_base_address(batch, binder);
+   ice->vtbl.update_surface_base_address(batch, binder);
 }
 
 static void *
@@ -302,7 +302,7 @@ iris_blorp_exec(struct blorp_batch *blorp_batch,
    }
 
 #if GEN_GEN >= 12
-   genX(invalidate_aux_map_state)(batch);
+   genX(emit_aux_map_state)(batch);
 #endif
 
    iris_handle_always_flush_cache(batch);

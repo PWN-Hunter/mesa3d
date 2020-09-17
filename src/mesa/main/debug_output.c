@@ -28,13 +28,12 @@
 #include "context.h"
 #include "debug_output.h"
 #include "enums.h"
-
+#include "imports.h"
 #include "hash.h"
 #include "mtypes.h"
 #include "version.h"
 #include "util/hash_table.h"
 #include "util/list.h"
-#include "util/u_memory.h"
 
 
 static simple_mtx_t DynamicIDMutex = _SIMPLE_MTX_INITIALIZER_NP;
@@ -1281,7 +1280,7 @@ _mesa_init_debug_output(struct gl_context *ctx)
 
 
 void
-_mesa_destroy_debug_output(struct gl_context *ctx)
+_mesa_free_errors_data(struct gl_context *ctx)
 {
    if (ctx->Debug) {
       debug_destroy(ctx->Debug);

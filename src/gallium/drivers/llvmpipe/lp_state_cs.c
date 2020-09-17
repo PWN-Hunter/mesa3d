@@ -496,8 +496,8 @@ llvmpipe_remove_cs_shader_variant(struct llvmpipe_context *lp,
 
    /* remove from context's list */
    remove_from_list(&variant->list_item_global);
-   lp->nr_cs_variants--;
-   lp->nr_cs_instrs -= variant->nr_instrs;
+   lp->nr_fs_variants--;
+   lp->nr_fs_instrs -= variant->nr_instrs;
 
    FREE(variant);
 }
@@ -523,8 +523,6 @@ llvmpipe_delete_compute_state(struct pipe_context *pipe,
       llvmpipe_remove_cs_shader_variant(llvmpipe, li->base);
       li = next;
    }
-   if (shader->base.ir.nir)
-      ralloc_free(shader->base.ir.nir);
    tgsi_free_tokens(shader->base.tokens);
    FREE(shader);
 }
@@ -1306,12 +1304,12 @@ llvmpipe_set_global_binding(struct pipe_context *pipe,
    }
 
    for (i = 0; i < count; i++) {
-      uintptr_t va;
+      uint64_t va;
       uint32_t offset;
       pipe_resource_reference(&cs->global_buffers[first + i], resources[i]);
       struct llvmpipe_resource *lp_res = llvmpipe_resource(resources[i]);
       offset = *handles[i];
-      va = (uintptr_t)((char *)lp_res->data + offset);
+      va = (uint64_t)((char *)lp_res->data + offset);
       memcpy(handles[i], &va, sizeof(va));
    }
 }

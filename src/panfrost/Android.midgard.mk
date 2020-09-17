@@ -23,6 +23,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := libpanfrost_midgard
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 intermediates := $(call local-generated-sources-dir)
+prebuilt_intermediates := $(MESA_TOP)/prebuilt-intermediates
 
 LOCAL_SRC_FILES := \
 	$(midgard_FILES)
@@ -44,16 +45,15 @@ LOCAL_C_INCLUDES := \
 LOCAL_STATIC_LIBRARIES := \
 	libmesa_glsl \
 	libmesa_nir \
-	libmesa_st_mesa \
-	libpanfrost_util \
+	libmesa_st_mesa
 
 midgard_nir_algebraic_gen := $(LOCAL_PATH)/midgard/midgard_nir_algebraic.py
 midgard_nir_algebraic_deps := \
 	$(MESA_TOP)/src/compiler/nir/
 
-$(intermediates)/midgard_nir_algebraic.c: $(midgard_nir_algebraic_deps)
+$(intermediates)/midgard_nir_algebraic.c: $(prebuilt_intermediates)/midgard/midgard_nir_algebraic.c
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $(midgard_nir_algebraic_gen) -p $< > $@
+	@cp -f $< $@
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
 	$(MESA_TOP)/src/panfrost/midgard/ \

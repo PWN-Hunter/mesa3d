@@ -28,6 +28,7 @@
 
 #include "dev/gen_device_info.h"
 
+struct gen_device_info;
 struct gen_perf_query_result;
 
 /* Guid has to matches with MDAPI's. */

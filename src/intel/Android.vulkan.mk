@@ -220,6 +220,7 @@ LOCAL_MODULE := libmesa_vulkan_common
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 intermediates := $(call local-generated-sources-dir)
+prebuilt_intermediates := $(MESA_TOP)/prebuilt-intermediates
 
 LOCAL_SRC_FILES := $(VULKAN_FILES)
 
@@ -243,31 +244,21 @@ LOCAL_STATIC_LIBRARIES := \
 
 LOCAL_GENERATED_SOURCES := $(addprefix $(intermediates)/,$(VULKAN_GENERATED_FILES))
 
-$(intermediates)/vulkan/anv_entrypoints.c: $(ANV_ENTRYPOINTS_GEN_SCRIPT) \
-					   $(ANV_EXTENSIONS_SCRIPT) \
-					   $(VULKAN_API_XML)
+$(intermediates)/vulkan/anv_entrypoints.c: $(prebuilt_intermediates)/vulkan/anv_entrypoints.c
 	@mkdir -p $(dir $@)
-	$(MESA_PYTHON2) $(ANV_ENTRYPOINTS_GEN_SCRIPT) \
-		--xml $(VULKAN_API_XML) \
-		--outdir $(dir $@)
+	@cp -f $< $@
 
-$(intermediates)/vulkan/anv_entrypoints.h: $(intermediates)/vulkan/anv_entrypoints.c
-
-$(intermediates)/vulkan/anv_extensions.c: $(ANV_EXTENSIONS_GEN_SCRIPT) \
-					  $(ANV_EXTENSIONS_SCRIPT) \
-					  $(VULKAN_API_XML)
+$(intermediates)/vulkan/anv_entrypoints.h: $(prebuilt_intermediates)/vulkan/anv_entrypoints.h
 	@mkdir -p $(dir $@)
-	$(MESA_PYTHON2) $(ANV_EXTENSIONS_GEN_SCRIPT) \
-		--xml $(VULKAN_API_XML) \
-		--out-c $@
+	@cp -f $< $@
 
-$(intermediates)/vulkan/anv_extensions.h: $(ANV_EXTENSIONS_GEN_SCRIPT) \
-					   $(ANV_EXTENSIONS_SCRIPT) \
-					   $(VULKAN_API_XML)
+$(intermediates)/vulkan/anv_extensions.c: $(prebuilt_intermediates)/vulkan/anv_extensions.c
 	@mkdir -p $(dir $@)
-	$(MESA_PYTHON2) $(ANV_EXTENSIONS_GEN_SCRIPT) \
-		--xml $(VULKAN_API_XML) \
-		--out-h $@
+	@cp -f $< $@
+
+$(intermediates)/vulkan/anv_extensions.h: $(prebuilt_intermediates)/vulkan/anv_extensions.h
+	@mkdir -p $(dir $@)
+	@cp -f $< $@
 
 LOCAL_SHARED_LIBRARIES := $(ANV_SHARED_LIBRARIES)
 LOCAL_HEADER_LIBRARIES += $(VULKAN_COMMON_HEADER_LIBRARIES)

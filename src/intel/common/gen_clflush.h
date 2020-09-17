@@ -27,6 +27,12 @@
 #define CACHELINE_SIZE 64
 #define CACHELINE_MASK 63
 
+#if !defined(__i686__) && !defined(_x86_64__)
+#warning Unsupported architecture
+#define __builtin_ia32_mfence()
+#define __builtin_ia32_clflush(vaddr)
+#endif
+
 static inline void
 gen_clflush_range(void *start, size_t size)
 {

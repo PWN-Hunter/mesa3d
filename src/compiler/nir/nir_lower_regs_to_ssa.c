@@ -131,10 +131,7 @@ rewrite_alu_instr(nir_alu_instr *alu, struct regs_to_ssa_state *state)
     * channels in the write mask.
     */
    unsigned num_components;
-   uint8_t vec_swizzle[NIR_MAX_VEC_COMPONENTS];
-   for (unsigned i = 0; i < NIR_MAX_VEC_COMPONENTS; i++)
-      vec_swizzle[i] = i;
-
+   unsigned vec_swizzle[4] = { 0, 1, 2, 3 };
    if (nir_op_infos[alu->op].output_size == 0) {
       /* Figure out the swizzle we need on the vecN operation and compute
        * the number of components in the SSA def at the same time.
@@ -181,7 +178,13 @@ rewrite_alu_instr(nir_alu_instr *alu, struct regs_to_ssa_state *state)
    nir_ssa_dest_init(&alu->instr, &alu->dest.dest, num_components,
                      reg->bit_size, reg->name);
 
-   nir_op vecN_op = nir_op_vec(reg->num_components);
+   nir_op vecN_op;
+   switch (reg->num_components) {
+   case 2: vecN_op = nir_op_vec2; break;
+   case 3: vecN_op = nir_op_vec3; break;
+   case 4: vecN_op = nir_op_vec4; break;
+   default: unreachable("not reached");
+   }
 
    nir_alu_instr *vec = nir_alu_instr_create(state->shader, vecN_op);
 

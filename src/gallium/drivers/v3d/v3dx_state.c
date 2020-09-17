@@ -1250,8 +1250,7 @@ v3d_set_stream_output_targets(struct pipe_context *pctx,
 
         /* Create primitive counters BO if needed */
         if (num_targets > 0 && !ctx->prim_counts) {
-                /* Init all 7 counters and 1 padding to 0 */
-                uint32_t zeroes[8] = { 0 };
+                uint32_t zeroes[7] = { 0 }; /* Init all 7 counters to 0 */
                 u_upload_data(ctx->uploader,
                               0, sizeof(zeroes), 32, zeroes,
                               &ctx->prim_counts_offset,

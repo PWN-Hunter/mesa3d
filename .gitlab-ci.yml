@@ -1,39 +1,28 @@
 variables:
-  FDO_UPSTREAM_REPO: mesa/mesa
+  UPSTREAM_REPO: mesa/mesa
 
 include:
-  - project: 'freedesktop/ci-templates'
-    ref: 4b2997287317808830e9cb4eb0f99b691787da88
+  - project: 'wayland/ci-templates'
+    # Must be the same as in .gitlab-ci/lava-gitlab-ci.yml
+    ref: 0a9bdd33a98f05af6761ab118b5074952242aab0
     file: '/templates/debian.yml'
   - local: '.gitlab-ci/lava-gitlab-ci.yml'
-  - local: '.gitlab-ci/test-source-dep.yml'
 
 stages:
   - container
-  - meson-x86_64
-  - scons
-  - meson-misc
-  - llvmpipe
-  - softpipe
-  - freedreno
-  - panfrost
-  - radv
-  - lima
-  - virgl
+  - build
+  - test
   - success
 
 
 # When to automatically run the CI
 .ci-run-policy:
   rules:
-    # If any files affecting the pipeline are changed, build/test jobs run
-    # automatically once all dependency jobs have passed
-    - changes: &all_paths
+    # Run pipeline by default for merge requests changing files affecting it
+    - if: '$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == $CI_COMMIT_REF_NAME'
+      changes: &paths
       - VERSION
-      - bin/git_sha1_gen.py
-      - bin/install_megadrivers.py
-      - bin/meson_get_version.py
-      - bin/symbols-check.py
+      - bin/**/*
       # GitLab CI
       - .gitlab-ci.yml
       - .gitlab-ci/**/*
@@ -49,7 +38,16 @@ stages:
       - include/**/*
       - src/**/*
       when: on_success
-    # Otherwise, build/test jobs won't run
+    # Run pipeline by default in the main project if files affecting it were
+    # changed
+    - if: '$CI_PROJECT_PATH == "mesa/mesa"'
+      changes:
+        *paths
+      when: on_success
+    # Allow triggering jobs manually on branches of forked projects
+    - if: '$CI_PROJECT_PATH != "mesa/mesa" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME != $CI_COMMIT_REF_NAME'
+      when: manual
+    # Otherwise, most jobs won't run
     - when: never
   retry:
     max: 2
@@ -65,7 +63,7 @@ success:
     - merge_requests
   except:
     changes:
-      *all_paths
+      *paths
   variables:
     GIT_STRATEGY: none
   script:
@@ -74,7 +72,6 @@ success:
 
 .ci-deqp-artifacts:
   artifacts:
-    name: "mesa_${CI_JOB_NAME}"
     when: always
     untracked: false
     paths:
@@ -84,7 +81,7 @@ success:
 
 # Build the CI docker images.
 #
-# FDO_DISTRIBUTION_TAG is the tag of the docker image used by later stage jobs. If the
+# DEBIAN_TAG is the tag of the docker image used by later stage jobs. If the
 # image doesn't exist yet, the container stage job generates it.
 #
 # In order to generate a new image, one should generally change the tag.
@@ -103,40 +100,20 @@ success:
   stage: container
   extends:
     - .ci-run-policy
-  rules:
-    # Run pipeline by default if it was triggered by Marge Bot, is for a
-    # merge request, and any files affecting it were changed
-    - if: '$GITLAB_USER_LOGIN == "marge-bot" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == $CI_COMMIT_REF_NAME'
-      changes:
-        *all_paths
-      when: on_success
-    # Run pipeline by default in the main project if any files affecting it were
-    # changed
-    - if: '$CI_PROJECT_PATH == "mesa/mesa"'
-      changes:
-        *all_paths
-      when: on_success
-    # Allow triggering jobs manually for MRs or branches of forked projects if
-    # any files affecting the pipeline were changed
-    - changes:
-        *all_paths
-      when: manual
-    # Otherwise, container jobs won't run
-    - when: never
   variables:
-    FDO_DISTRIBUTION_VERSION: buster-slim
-    FDO_REPO_SUFFIX: "debian/$CI_JOB_NAME"
-    FDO_DISTRIBUTION_EXEC: 'bash .gitlab-ci/container/${CI_JOB_NAME}.sh'
+    DEBIAN_VERSION: buster-slim
+    REPO_SUFFIX: $CI_JOB_NAME
+    DEBIAN_EXEC: 'bash .gitlab-ci/container/${CI_JOB_NAME}.sh'
     # no need to pull the whole repo to build the container image
     GIT_STRATEGY: none
 
 # Debian 10 based x86 build image
 x86_build:
   extends:
-    - .fdo.container-build@debian
+    - .debian@container-ifnot-exists
     - .container
   variables:
-    FDO_DISTRIBUTION_TAG: &x86_build "2020-05-18-baremetal-2"
+    DEBIAN_TAG: &x86_build "2020-01-14"
 
 .use-x86_build:
   variables:
@@ -149,20 +126,32 @@ x86_build:
 x86_test-gl:
   extends: x86_build
   variables:
-    FDO_DISTRIBUTION_TAG: &x86_test-gl "2020-05-18"
+    DEBIAN_TAG: &x86_test-gl "2020-01-14"
 
 # Debian 10 based x86 test image for VK
 x86_test-vk:
   extends: x86_build
   variables:
-    FDO_DISTRIBUTION_TAG: &x86_test-vk "2020-05-18"
+    DEBIAN_TAG: &x86_test-vk "2020-01-14"
+  # Can only be triggered manually on personal branches because RADV is the only
+  # driver that does Vulkan testing at the moment.
+  rules:
+    # Never build the test image for VK by default in the main project.
+    - if: '$CI_PROJECT_PATH == "mesa/mesa"'
+      when: never
+    # Never build the test image for VK by default for merge requests.
+    - if: '$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == $CI_COMMIT_REF_NAME'
+      when: never
+    # Otherwise, allow building it manually for personal branches.
+    - when: manual
+
 
 # Debian 9 based x86 build image (old LLVM)
 x86_build_old:
   extends: x86_build
   variables:
-    FDO_DISTRIBUTION_TAG: &x86_build_old "2019-03-18-jflags"
-    FDO_DISTRIBUTION_VERSION: stretch-slim
+    DEBIAN_TAG: &x86_build_old "2019-09-18"
+    DEBIAN_VERSION: stretch-slim
 
 .use-x86_build_old:
   variables:
@@ -174,10 +163,10 @@ x86_build_old:
 # Debian 10 based ARM build image
 arm_build:
   extends:
-    - .fdo.container-build@debian@arm64v8
+    - .debian@container-ifnot-exists@arm64v8
     - .container
   variables:
-    FDO_DISTRIBUTION_TAG: &arm_build "2020-05-28-cheza-2"
+    DEBIAN_TAG: &arm_build "2020-01-14"
 
 .use-arm_build:
   variables:
@@ -186,65 +175,28 @@ arm_build:
   needs:
     - arm_build
 
-# x86 image with ARM rootfses for baremetal testing.
+# Debian 10 based ARM test image
 arm_test:
-  extends: x86_build
+  extends: arm_build
   variables:
-    FDO_DISTRIBUTION_TAG: &arm_test "2020-05-28-cheza-2"
+    DEBIAN_TAG: &arm_test "2019-12-18"
 
 .use-arm_test:
   variables:
     TAG: *arm_test
   image: "$CI_REGISTRY_IMAGE/debian/arm_test:$TAG"
   needs:
+    - meson-arm64
     - arm_test
 
-# Native Windows docker builds
-# 
-# Unlike the above Linux-based builds - including MinGW/SCons builds which
-# cross-compile for Windows - which use the freedesktop ci-templates, we
-# cannot use the same scheme here. As Windows lacks support for
-# Docker-in-Docker, and Podman does not run natively on Windows, we have
-# to open-code much of the same ourselves.
-#
-# This is achieved by first running in a native Windows shell instance
-# (host PowerShell) in the container stage to build and push the image,
-# then in the build stage by executing inside Docker.
-
-.windows-docker-vs2019:
-  variables:
-    WINDOWS_TAG: "2020-03-24"
-    WINDOWS_IMAGE: "$CI_REGISTRY_IMAGE/windows/x64_build:$WINDOWS_TAG"
-    WINDOWS_UPSTREAM_IMAGE: "$CI_REGISTRY/$FDO_UPSTREAM_REPO/windows/x64_build:$WINDOWS_TAG"
-
-windows_build_vs2019:
-  extends:
-    - .container
-    - .windows-docker-vs2019
-  stage: container
-  variables:
-    GIT_STRATEGY: fetch # we do actually need the full repository though
-  tags:
-    - windows
-    - shell
-    - "1809"
-    - mesa
-  script:
-    - .\.gitlab-ci\windows\mesa_container.ps1 $CI_REGISTRY $CI_REGISTRY_USER $CI_REGISTRY_PASSWORD $WINDOWS_IMAGE $WINDOWS_UPSTREAM_IMAGE
-  
-.use-windows_build_vs2019:
-  extends: .windows-docker-vs2019
-  image: "$WINDOWS_IMAGE"
-  needs:
-    - windows_build_vs2019
 
 # BUILD
 
 # Shared between windows and Linux
 .build-common:
   extends: .ci-run-policy
+  stage: build
   artifacts:
-    name: "mesa_${CI_JOB_NAME}"
     when: always
     paths:
       - _build/meson-logs/*.txt
@@ -270,10 +222,7 @@ windows_build_vs2019:
 .build-windows:
   extends: .build-common
   tags:
-    - windows
-    - docker
-    - "1809"
-    - mesa
+    - mesa-windows
   cache:
     key: ${CI_JOB_NAME}
     paths:
@@ -283,7 +232,6 @@ windows_build_vs2019:
   extends:
     - .build-linux
     - .use-x86_build
-  stage: meson-x86_64
   variables:
     LLVM_VERSION: 9
   script:
@@ -293,7 +241,6 @@ windows_build_vs2019:
   extends:
     - .build-linux
     - .use-x86_build
-  stage: scons
   variables:
     SCONSFLAGS: "-j4"
   script:
@@ -312,16 +259,14 @@ meson-testing:
       -D platforms=x11,drm,surfaceless
     GALLIUM_ST: >
       -D dri3=true
-    GALLIUM_DRIVERS: "swrast,virgl"
+    GALLIUM_DRIVERS: "swrast"
     VULKAN_DRIVERS: amd
     BUILDTYPE: "debugoptimized"
-    EXTRA_OPTION: >
-      -D werror=true
   script:
     - .gitlab-ci/meson-build.sh
     - .gitlab-ci/prepare-artifacts.sh
 
-meson-gallium:
+meson-main:
   extends: .meson-build
   variables:
     UNWIND: "true"
@@ -330,6 +275,7 @@ meson-gallium:
       -D gbm=true
       -D egl=true
       -D platforms=x11,wayland,drm,surfaceless
+    DRI_DRIVERS: "i915,i965,r100,r200,nouveau"
     GALLIUM_ST: >
       -D dri3=true
       -D gallium-extra-hud=true
@@ -348,24 +294,9 @@ meson-gallium:
     - .gitlab-ci/meson-build.sh
     - .gitlab-ci/run-shader-db.sh
 
-meson-classic:
-  extends: .meson-build
-  variables:
-    UNWIND: "true"
-    DRI_LOADERS: >
-      -D glx=dri
-      -D gbm=true
-      -D egl=true
-      -D platforms=x11,wayland,drm,surfaceless
-    DRI_DRIVERS: "auto"
-    EXTRA_OPTION: >
-      -D osmesa=classic
-      -D tools=all
-
 .meson-cross:
   extends:
     - .meson-build
-  stage: meson-misc
   variables:
     UNWIND: "false"
     DRI_LOADERS: >
@@ -382,7 +313,6 @@ meson-classic:
       -D gallium-va=false
       -D gallium-xa=false
       -D gallium-nine=false
-    LLVM_VERSION: "8"
 
 .meson-arm:
   extends:
@@ -392,6 +322,8 @@ meson-classic:
     VULKAN_DRIVERS: freedreno
     GALLIUM_DRIVERS: "etnaviv,freedreno,kmsro,lima,nouveau,panfrost,swrast,tegra,v3d,vc4"
     BUILDTYPE: "debugoptimized"
+    EXTRA_OPTION: >
+      -D I-love-half-baked-turnips=true
   tags:
     - aarch64
 
@@ -402,8 +334,6 @@ meson-armhf:
   variables:
     CROSS: armhf
     LLVM_VERSION: "7"
-    EXTRA_OPTION: >
-      -D llvm=false
   script:
     - .gitlab-ci/meson-build.sh
     - .gitlab-ci/prepare-artifacts.sh
@@ -413,21 +343,11 @@ meson-arm64:
     - .meson-arm
     - .ci-deqp-artifacts
   variables:
-    VULKAN_DRIVERS: "freedreno"
-    EXTRA_OPTION: >
-      -D llvm=false
+    LLVM_VERSION: "8"
+    VULKAN_DRIVERS: "freedreno,amd"
   script:
     - .gitlab-ci/meson-build.sh
     - .gitlab-ci/prepare-artifacts.sh
-
-meson-arm64-build-test:
-  extends:
-    - .meson-arm
-    - .ci-deqp-artifacts
-  variables:
-    VULKAN_DRIVERS: "amd"
-  script:
-    - .gitlab-ci/meson-build.sh
 
 meson-clang:
   extends: .meson-build
@@ -441,20 +361,27 @@ meson-clang:
     CC: "ccache clang-9"
     CXX: "ccache clang++-9"
 
-meson-windows-vs2019:
+.meson-windows:
   extends:
     - .build-windows
-    - .use-windows_build_vs2019
-  stage: meson-misc
+  before_script:
+    - $ENV:ARCH = "x86"
+    - $ENV:VERSION = "2019\Community"
   script:
-    - . .\.gitlab-ci\windows\mesa_build.ps1
+    - cmd /C .gitlab-ci\meson-build.bat
+
+scons-swr:
+  extends: .scons-build
+  variables:
+    SCONS_TARGET: "swr=1"
+    SCONS_CHECK_COMMAND: "true"
+    LLVM_VERSION: "6.0"
 
 scons-win64:
   extends: .scons-build
   variables:
-    SCONS_TARGET: platform=windows machine=x86_64 debug=1
+    SCONS_TARGET: platform=windows machine=x86_64
     SCONS_CHECK_COMMAND: "true"
-  allow_failure: true
 
 meson-clover:
   extends: .meson-build
@@ -524,51 +451,25 @@ meson-vulkan:
     VULKAN_DRIVERS: intel,amd,freedreno
     EXTRA_OPTION: >
       -D vulkan-overlay-layer=true
-      -D werror=true
 
+# While the main point of this build is testing the i386 cross build,
+# we also use this one to test some other options that are exclusive
+# with meson-main's choices (classic swrast and osmesa)
 meson-i386:
   extends: .meson-cross
   variables:
     CROSS: i386
-    VULKAN_DRIVERS: intel,amd
-    GALLIUM_DRIVERS: "iris,r300,radeonsi,swrast,virgl"
+    VULKAN_DRIVERS: intel
+    DRI_DRIVERS: "swrast"
+    GALLIUM_DRIVERS: "iris"
     EXTRA_OPTION: >
       -D vulkan-overlay-layer=true
+      -D llvm=false
+      -D osmesa=classic
       -D werror=true
-  script:
-    - dpkg -i /var/cache/apt/archives/$CROSS/*.deb
-    - .gitlab-ci/meson-build.sh
-
-meson-s390x:
-  extends:
-    - .meson-cross
-  tags:
-    - kvm
-  variables:
-    CROSS: s390x
-    EXTRA_OPTION: >
-      -D werror=true
-    GALLIUM_DRIVERS: "swrast"
-  script:
-    # For unknown reasons "too many" installed i386 libraries cause qemu to
-    # crash while executing llvm-config for s390x.
-    - apt-get purge -y wine32
-    - apt-get autoremove -y --purge
-    - dpkg -i /var/cache/apt/archives/$CROSS/*.deb
-    - .gitlab-ci/meson-build.sh
-
-meson-ppc64el:
-  extends:
-    - meson-s390x
-  variables:
-    CROSS: ppc64el
-    EXTRA_OPTION: ""
-    GALLIUM_DRIVERS: "nouveau,radeonsi,swrast,virgl"
-    VULKAN_DRIVERS: "amd"
 
 meson-mingw32-x86_64:
   extends: .meson-build
-  stage: meson-misc
   variables:
     UNWIND: "false"
     DRI_DRIVERS: ""
@@ -578,9 +479,26 @@ meson-mingw32-x86_64:
       -Dosmesa=gallium
       --cross-file=.gitlab-ci/x86_64-w64-mingw32
 
+scons:
+  extends: .scons-build
+  variables:
+    SCONS_TARGET: "llvm=1"
+    SCONS_CHECK_COMMAND: "scons llvm=1 force_scons=1 check"
+  script:
+    - SCONS_TARGET="" SCONS_CHECK_COMMAND="scons check force_scons=1" .gitlab-ci/scons-build.sh
+    - LLVM_VERSION=9 .gitlab-ci/scons-build.sh
+
+scons-old-llvm:
+  extends:
+    - scons
+    - .use-x86_build_old
+  script:
+    - LLVM_VERSION=3.9 .gitlab-ci/scons-build.sh
+
 .test:
   extends:
     - .ci-run-policy
+  stage: test
   variables:
     GIT_STRATEGY: none # testing doesn't build anything from source
   before_script:
@@ -590,7 +508,7 @@ meson-mingw32-x86_64:
     - LD_LIBRARY_PATH=install/lib find install/lib -name "*.so" -print -exec ldd {} \;
   artifacts:
     when: always
-    name: "mesa_${CI_JOB_NAME}"
+    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
     paths:
       - results/
   dependencies:
@@ -603,7 +521,6 @@ meson-mingw32-x86_64:
     TAG: *x86_test-gl
   image: "$CI_REGISTRY_IMAGE/debian/x86_test-gl:$TAG"
   needs:
-    - x86_build
     - meson-testing
     - x86_test-gl
 
@@ -614,24 +531,21 @@ meson-mingw32-x86_64:
     TAG: *x86_test-vk
   image: "$CI_REGISTRY_IMAGE/debian/x86_test-vk:$TAG"
   needs:
-    - x86_build
     - meson-testing
     - x86_test-vk
 
 .piglit-test:
-  extends:
-    - .test-gl
-    - .llvmpipe-rules
+  extends: .test-gl
   artifacts:
     when: on_failure
-    name: "mesa_${CI_JOB_NAME}"
+    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
     paths:
       - summary/
   variables:
     LIBGL_ALWAYS_SOFTWARE: 1
     PIGLIT_NO_WINDOW: 1
   script:
-    - install/piglit/run.sh
+    - artifacts/piglit/run.sh
 
 piglit-quick_gl:
   extends: .piglit-test
@@ -668,7 +582,7 @@ piglit-quick_shader:
   variables:
     DEQP_SKIPS: deqp-default-skips.txt
   script:
-    - ./install/deqp-runner.sh
+    - ./artifacts/deqp-runner.sh
 
 .deqp-test-gl:
   extends:
@@ -682,12 +596,7 @@ piglit-quick_shader:
   variables:
     DEQP_VER: vk
 
-.fossilize-test:
-  extends: .test-vk
-  script:
-    - ./install/fossilize-runner.sh
-
-llvmpipe-gles2:
+test-llvmpipe-gles2:
   variables:
     DEQP_VER: gles2
     DEQP_PARALLEL: 4
@@ -697,98 +606,42 @@ llvmpipe-gles2:
     LP_NUM_THREADS: 0
     DEQP_EXPECTED_FAILS: deqp-llvmpipe-fails.txt
     LIBGL_ALWAYS_SOFTWARE: "true"
-    DEQP_EXPECTED_RENDERER: llvmpipe
-  extends:
-    - .deqp-test-gl
-    - .llvmpipe-rules
+  extends: .deqp-test-gl
 
-softpipe-gles2:
-  extends:
-    - llvmpipe-gles2
-    - .softpipe-rules
+test-softpipe-gles2:
+  extends: test-llvmpipe-gles2
   variables:
     DEQP_EXPECTED_FAILS: deqp-softpipe-fails.txt
     DEQP_SKIPS: deqp-softpipe-skips.txt
     GALLIUM_DRIVER: "softpipe"
-    DEQP_EXPECTED_RENDERER: softpipe
 
-softpipe-gles3:
+test-softpipe-gles3:
   parallel: 2
   variables:
     DEQP_VER: gles3
-  extends: softpipe-gles2
+  extends: test-softpipe-gles2
 
-softpipe-gles31:
+test-softpipe-gles31:
   parallel: 4
   variables:
     DEQP_VER: gles31
-  extends: softpipe-gles2
-
-virgl-gles2:
-  variables:
-    DEQP_VER: gles2
-    DEQP_PARALLEL: 4
-    NIR_VALIDATE: 0
-    DEQP_NO_SAVE_RESULTS: 1
-    # Don't use threads inside llvmpipe, we've already got all 4 cores
-    # busy with DEQP_PARALLEL.
-    LP_NUM_THREADS: 0
-    DEQP_EXPECTED_FAILS: deqp-virgl-fails.txt
-    LIBGL_ALWAYS_SOFTWARE: "true"
-    GALLIUM_DRIVER: "virpipe"
-    DEQP_EXPECTED_RENDERER: virgl
-  extends:
-    - .deqp-test-gl
-    - .virgl-rules
-
-virgl-gles3:
-  variables:
-    DEQP_VER: gles3
-    CI_NODE_INDEX: 1
-    CI_NODE_TOTAL: 3
-    DEQP_RUNNER_OPTIONS: "--timeout 120"
-  extends: virgl-gles2
-
-virgl-gles31:
-  variables:
-    DEQP_VER: gles31
-    CI_NODE_INDEX: 1
-    CI_NODE_TOTAL: 10
-    DEQP_OPTIONS: "--deqp-log-images=disable"
-    DEQP_RUNNER_OPTIONS: "--timeout 120"
-    MESA_GLES_VERSION_OVERRIDE: "3.1"
-    MESA_GLSL_VERSION_OVERRIDE: "310"
-    MESA_EXTENSION_OVERRIDE: "-GL_OES_tessellation_shader"
-  extends: virgl-gles2
-
-# Rules for tests that should not be present in MRs or the main
-# project's pipeline (don't block marge or report red on
-# mesa/mesamaster) but should be present on pipelines in personal
-# branches (so you can opt in to running the flaky test when you want
-# to).
-.test-manual:
-  rules:
-    - if: '$CI_PROJECT_PATH != "mesa/mesa" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME != $CI_COMMIT_REF_NAME'
-      changes:
-        *all_paths
-      when: manual
-    - when: never
+  extends: test-softpipe-gles2
 
 arm64_a630_gles2:
   extends:
-    - arm64_a306_gles2
+    - .deqp-test-gl
+    - .use-arm_test
   variables:
-    BM_KERNEL: /lava-files/cheza-kernel
-    BM_CMDLINE: "ip=dhcp console=ttyMSM0,115200n8 root=/dev/nfs rw nfsrootdebug nfsroot=,tcp,nfsvers=4.2 init=/init"
+    DEQP_VER: gles2
     DEQP_EXPECTED_FAILS: deqp-freedreno-a630-fails.txt
     DEQP_SKIPS: deqp-freedreno-a630-skips.txt
     NIR_VALIDATE: 0
-    DEQP_EXPECTED_RENDERER: FD630
-    DEQP_NO_SAVE_RESULTS: ""
+    DEQP_PARALLEL: 4
+    FLAKES_CHANNEL: "#freedreno-ci"
   tags:
-    - google-freedreno-cheza
-  script:
-    - .gitlab-ci/bare-metal/cros-servo.sh
+    - mesa-cheza
+  dependencies:
+    - meson-arm64
 
 arm64_a630_gles31:
   extends: arm64_a630_gles2
@@ -800,209 +653,38 @@ arm64_a630_gles3:
   variables:
     DEQP_VER: gles3
 
-# We almost always manage to lower UBOs back to constant uploads in
-# the test suite, so get a little testing for it here.
-arm64_a630_noubo:
-  extends: arm64_a630_gles31
-  variables:
-    DEQP_VER: gles31
-    IR3_SHADER_DEBUG: nouboopt
-    DEQP_CASELIST_FILTER: "functional.*ubo"
-    DEQP_EXPECTED_FAILS: deqp-freedreno-a630-noubo-fails.txt
-
-# The driver does some guessing as to whether to render using gmem
-# or bypass, and some GLES3.1 features interact with either one.
-# Do a little testing with gmem and bypass forced.
-arm64_a630_bypass:
-  extends: arm64_a630_gles31
-  variables:
-    CI_NODE_INDEX: 1
-    CI_NODE_TOTAL: 5
-    FD_MESA_DEBUG: nogmem
-    DEQP_EXPECTED_FAILS: deqp-freedreno-a630-bypass-fails.txt
-
-# Along with checking gmem path, check that we don't get obvious nir
-# validation failures (though it's too expensive to have it on for the
-# full CTS)
-arm64_a630_gmem:
-  extends: arm64_a630_gles31
-  variables:
-    CI_NODE_INDEX: 1
-    CI_NODE_TOTAL: 5
-    FD_MESA_DEBUG: nobypass
-    NIR_VALIDATE: 1
-
-.baremetal-test:
-  extends:
-    - .ci-run-policy
-  stage: test
-  artifacts:
-    when: always
-    name: "mesa_${CI_JOB_NAME}"
-    paths:
-      - results/
-      - serial*.txt
-
 arm64_a306_gles2:
-  extends:
-    - .baremetal-test
-    - .use-arm_test
-    - .freedreno-rules
+  extends: arm64_a630_gles2
   variables:
-    BM_KERNEL: /lava-files/Image.gz
-    BM_DTB: /lava-files/apq8016-sbc.dtb
-    BM_ROOTFS: /lava-files/rootfs-arm64
-    BM_CMDLINE: "ip=dhcp console=ttyMSM0,115200n8"
-    FLAKES_CHANNEL: "#freedreno-ci"
     DEQP_EXPECTED_FAILS: deqp-freedreno-a307-fails.txt
-    DEQP_SKIPS: deqp-freedreno-a307-skips.txt
-    DEQP_VER: gles2
-    DEQP_PARALLEL: 4
-    DEQP_EXPECTED_RENDERER: FD307
-    # Since we can't get artifacts back yet, skip making them.
-    DEQP_NO_SAVE_RESULTS: 1
-  script:
-    - .gitlab-ci/bare-metal/fastboot.sh
-  needs:
-    - arm_test
-    - arm_build
-    - meson-arm64
+    DEQP_SKIPS: deqp-default-skips.txt
   tags:
-    - google-freedreno-db410c
-
-# Disabled due to flaky results
-arm64_a306_gles3:
-  extends:
-    - arm64_a306_gles2
-  variables:
-    DEQP_VER: gles3
-    DEQP_PARALLEL: 1
-    CI_NODE_INDEX: 1
-    CI_NODE_TOTAL: 50
-
-arm64_a530_gles2:
-  extends:
-    - arm64_a306_gles2
-  variables:
-    BM_KERNEL: /lava-files/db820c-kernel
-    BM_DTB: /lava-files/db820c.dtb
-    # Disable SMP because only CPU 0 is at a freq higher than 19mhz on
-    # current upstream kernel.
-    BM_CMDLINE: "ip=dhcp console=ttyMSM0,115200n8 nosmp"
-    DEQP_EXPECTED_FAILS: deqp-freedreno-a530-fails.txt
-    DEQP_SKIPS: deqp-freedreno-a530-skips.txt
-    DEQP_EXPECTED_RENDERER: FD530
-  tags:
-    - google-freedreno-db820c
-
-arm64_a530_gles3:
-  extends:
-    - arm64_a530_gles2
-  variables:
-    DEQP_VER: gles3
-    DEQP_PARALLEL: 1
-    CI_NODE_INDEX: 1
-    CI_NODE_TOTAL: 100
-
-arm64_a530_gles31:
-  extends:
-    - arm64_a530_gles3
-  variables:
-    DEQP_VER: gles31
+    - db410c
 
 # RADV CI
 .test-radv:
-  extends: .radv-rules
-  stage: radv
   variables:
     VK_DRIVER: radeon
     RADV_DEBUG: checkir
+  # Can only be triggered manually on personal branches because RADV is the only
+  # driver that does Vulkan testing at the moment.
+  rules:
+    # Never test RADV by default in the main project.
+    - if: '$CI_PROJECT_PATH == "mesa/mesa"'
+      when: never
+    # Never test RADV by default for merge requests.
+    - if: '$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME == $CI_COMMIT_REF_NAME'
+      when: never
+    # Otherwise, allow testing RADV if the test image for VK has been manually
+    # started.
+    - when: on_success
 
-.test-radv-fossilize:
-  extends:
-    - .fossilize-test
-    - .test-radv
-  script:
-    - ./install/fossilize-runner.sh
-    - ACO_DEBUG=validateir,validatera RADV_PERFTEST=aco ./install/fossilize-runner.sh
-
-# Can only be triggered manually on personal branches because RADV is the only
-# driver that does Vulkan testing at the moment.
 radv_polaris10_vkcts:
   extends:
     - .deqp-test-vk
     - .test-radv
-    - .test-manual
   variables:
+    DEQP_PARALLEL: 4
     DEQP_SKIPS: deqp-radv-polaris10-skips.txt
   tags:
     - polaris10
-
-radv-fossils:
-  extends:
-    - .fossilize-test
-    - .test-radv
-  script:
-    # Polaris10
-    - export RADV_FORCE_FAMILY="polaris10"
-    - ./install/fossilize-runner.sh
-    - ACO_DEBUG=validateir,validatera RADV_PERFTEST=aco ./install/fossilize-runner.sh
-    # Vega10
-    - export RADV_FORCE_FAMILY="gfx900"
-    - ./install/fossilize-runner.sh
-    - ACO_DEBUG=validateir,validatera RADV_PERFTEST=aco ./install/fossilize-runner.sh
-    # Navi10
-    - export RADV_FORCE_FAMILY="gfx1010"
-    - ./install/fossilize-runner.sh
-    - ACO_DEBUG=validateir,validatera RADV_PERFTEST=aco ./install/fossilize-runner.sh
-
-# Traces CI
-.traces-test:
-  cache:
-    key: ${CI_JOB_NAME}
-    paths:
-      - traces-db/
-
-.traces-test-gl:
-  extends:
-    - .test-gl
-    - .traces-test
-  script:
-    - ./install/tracie-runner-gl.sh
-
-.traces-test-vk:
-  extends:
-    - .test-vk
-    - .traces-test
-  script:
-    - ./install/tracie-runner-vk.sh
-
-llvmpipe-traces:
-  extends:
-    - .traces-test-gl
-    - .llvmpipe-rules
-  variables:
-    LIBGL_ALWAYS_SOFTWARE: "true"
-    GALLIUM_DRIVER: "llvmpipe"
-    DEVICE_NAME: "gl-vmware-llvmpipe"
-
-radv-polaris10-traces:
-  extends:
-    - .traces-test-vk
-    - .test-radv
-    - .test-manual
-  variables:
-    DEVICE_NAME: "vk-amd-polaris10"
-  tags:
-    - polaris10
-
-virgl-traces:
-  extends:
-    - .traces-test-gl
-    - .virgl-rules
-  variables:
-    LIBGL_ALWAYS_SOFTWARE: "true"
-    GALLIUM_DRIVER: "virpipe"
-    DEVICE_NAME: "gl-virgl"
-    MESA_GLES_VERSION_OVERRIDE: "3.1"
-    MESA_GLSL_VERSION_OVERRIDE: "310"

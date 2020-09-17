@@ -285,26 +285,7 @@ svga_buffer_hw_storage_map(struct svga_context *svga,
    svga->hud.num_buffers_mapped++;
 
    if (sws->have_gb_objects) {
-      struct svga_winsys_context *swc = svga->swc;
-      boolean rebind;
-      void *map;
-
-      if (swc->force_coherent) {
-         flags |= PIPE_TRANSFER_PERSISTENT | PIPE_TRANSFER_COHERENT;
-      }
-      map = swc->surface_map(swc, sbuf->handle, flags, retry, &rebind);
-      if (map && rebind) {
-         enum pipe_error ret;
-
-         ret = SVGA3D_BindGBSurface(swc, sbuf->handle);
-         if (ret != PIPE_OK) {
-            svga_context_flush(svga, NULL);
-            ret = SVGA3D_BindGBSurface(swc, sbuf->handle);
-            assert(ret == PIPE_OK);
-         }
-         svga_context_flush(svga, NULL);
-      }
-      return map;
+      return svga->swc->surface_map(svga->swc, sbuf->handle, flags, retry);
    } else {
       *retry = FALSE;
       return sws->buffer_map(sws, sbuf->hwbuf, flags);
@@ -332,6 +313,15 @@ svga_buffer_hw_storage_unmap(struct svga_context *svga,
             svga_context_flush(svga, NULL);
             ret = SVGA3D_BindGBSurface(swc, sbuf->handle);
             assert(ret == PIPE_OK);
+         }
+         if (swc->force_coherent) {
+            ret = SVGA3D_UpdateGBSurface(swc, sbuf->handle);
+            if (ret != PIPE_OK) {
+               /* flush and retry */
+               svga_context_flush(svga, NULL);
+               ret = SVGA3D_UpdateGBSurface(swc, sbuf->handle);
+               assert(ret == PIPE_OK);
+            }
          }
       }
    } else

@@ -235,7 +235,10 @@ nvc0_rasterizer_state_create(struct pipe_context *pipe,
     SB_IMMED_3D(so, MULTISAMPLE_ENABLE, cso->multisample);
 
     SB_IMMED_3D(so, LINE_SMOOTH_ENABLE, cso->line_smooth);
-    if (cso->line_smooth || cso->multisample)
+    /* On GM20x+, LINE_WIDTH_SMOOTH controls both aliased and smooth
+     * rendering and LINE_WIDTH_ALIASED seems to be ignored
+     */
+    if (cso->line_smooth || cso->multisample || class_3d >= GM200_3D_CLASS)
        SB_BEGIN_3D(so, LINE_WIDTH_SMOOTH, 1);
     else
        SB_BEGIN_3D(so, LINE_WIDTH_ALIASED, 1);
@@ -1381,13 +1384,9 @@ nvc0_set_global_bindings(struct pipe_context *pipe,
 
    if (nvc0->global_residents.size <= (end * sizeof(struct pipe_resource *))) {
       const unsigned old_size = nvc0->global_residents.size;
-      if (util_dynarray_resize(&nvc0->global_residents, struct pipe_resource *, end)) {
-         memset((uint8_t *)nvc0->global_residents.data + old_size, 0,
-                nvc0->global_residents.size - old_size);
-      } else {
-         NOUVEAU_ERR("Could not resize global residents array\n");
-         return;
-      }
+      util_dynarray_resize(&nvc0->global_residents, struct pipe_resource *, end);
+      memset((uint8_t *)nvc0->global_residents.data + old_size, 0,
+             nvc0->global_residents.size - old_size);
    }
 
    if (resources) {

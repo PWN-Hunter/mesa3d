@@ -25,11 +25,10 @@
  *
  **************************************************************************/
 
-
+#include "main/imports.h"
 #include "main/accum.h"
 #include "main/api_exec.h"
 #include "main/context.h"
-#include "main/debug_output.h"
 #include "main/glthread.h"
 #include "main/samplerobj.h"
 #include "main/shaderobj.h"
@@ -86,7 +85,6 @@
 #include "util/u_inlines.h"
 #include "util/u_upload_mgr.h"
 #include "util/u_vbuf.h"
-#include "util/u_memory.h"
 #include "cso_cache/cso_context.h"
 #include "compiler/glsl/glsl_parser_extras.h"
 
@@ -106,9 +104,6 @@ st_Enable(struct gl_context *ctx, GLenum cap, GLboolean state)
    case GL_DEBUG_OUTPUT:
    case GL_DEBUG_OUTPUT_SYNCHRONOUS:
       st_update_debug_callback(st);
-      break;
-   case GL_BLACKHOLE_RENDER_INTEL:
-      st->pipe->set_frontend_noop(st->pipe, ctx->IntelBlackholeRender);
       break;
    default:
       break;
@@ -401,28 +396,22 @@ free_zombie_shaders(struct st_context *st)
 
       switch (entry->type) {
       case PIPE_SHADER_VERTEX:
-         st->pipe->bind_vs_state(st->pipe, NULL);
-         st->pipe->delete_vs_state(st->pipe, entry->shader);
+         cso_delete_vertex_shader(st->cso_context, entry->shader);
          break;
       case PIPE_SHADER_FRAGMENT:
-         st->pipe->bind_fs_state(st->pipe, NULL);
-         st->pipe->delete_fs_state(st->pipe, entry->shader);
+         cso_delete_fragment_shader(st->cso_context, entry->shader);
          break;
       case PIPE_SHADER_GEOMETRY:
-         st->pipe->bind_gs_state(st->pipe, NULL);
-         st->pipe->delete_gs_state(st->pipe, entry->shader);
+         cso_delete_geometry_shader(st->cso_context, entry->shader);
          break;
       case PIPE_SHADER_TESS_CTRL:
-         st->pipe->bind_tcs_state(st->pipe, NULL);
-         st->pipe->delete_tcs_state(st->pipe, entry->shader);
+         cso_delete_tessctrl_shader(st->cso_context, entry->shader);
          break;
       case PIPE_SHADER_TESS_EVAL:
-         st->pipe->bind_tes_state(st->pipe, NULL);
-         st->pipe->delete_tes_state(st->pipe, entry->shader);
+         cso_delete_tesseval_shader(st->cso_context, entry->shader);
          break;
       case PIPE_SHADER_COMPUTE:
-         st->pipe->bind_compute_state(st->pipe, NULL);
-         st->pipe->delete_compute_state(st->pipe, entry->shader);
+         cso_delete_compute_shader(st->cso_context, entry->shader);
          break;
       default:
          unreachable("invalid shader type in free_zombie_shaders()");
@@ -582,6 +571,10 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
 
    st->ctx = ctx;
    st->pipe = pipe;
+
+   /* state tracker needs the VBO module */
+   _vbo_CreateContext(ctx);
+
    st->dirty = ST_ALL_STATES_MASK;
 
    st->can_bind_const_buffer_as_vertex =
@@ -593,20 +586,8 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
     * profile, so that u_vbuf is bypassed completely if there is nothing else
     * to do.
     */
-   unsigned cso_flags;
-   switch (ctx->API) {
-   case API_OPENGL_CORE:
-      cso_flags = CSO_NO_USER_VERTEX_BUFFERS;
-      break;
-   case API_OPENGLES:
-   case API_OPENGLES2:
-      cso_flags = CSO_NO_64B_VERTEX_BUFFERS;
-      break;
-   default:
-      cso_flags = 0;
-      break;
-   }
-
+   unsigned cso_flags =
+      ctx->API == API_OPENGL_CORE ? CSO_NO_USER_VERTEX_BUFFERS : 0;
    st->cso_context = cso_create_context(pipe, cso_flags);
 
    st_init_atoms(st);
@@ -625,20 +606,28 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
       STATIC_ASSERT(sizeof(struct st_util_vertex) == 9 * sizeof(float));
 
       memset(&st->util_velems, 0, sizeof(st->util_velems));
-      st->util_velems.velems[0].src_offset = 0;
-      st->util_velems.velems[0].vertex_buffer_index = 0;
-      st->util_velems.velems[0].src_format = PIPE_FORMAT_R32G32B32_FLOAT;
-      st->util_velems.velems[1].src_offset = 3 * sizeof(float);
-      st->util_velems.velems[1].vertex_buffer_index = 0;
-      st->util_velems.velems[1].src_format = PIPE_FORMAT_R32G32B32A32_FLOAT;
-      st->util_velems.velems[2].src_offset = 7 * sizeof(float);
-      st->util_velems.velems[2].vertex_buffer_index = 0;
-      st->util_velems.velems[2].src_format = PIPE_FORMAT_R32G32_FLOAT;
+      st->util_velems[0].src_offset = 0;
+      st->util_velems[0].vertex_buffer_index = 0;
+      st->util_velems[0].src_format = PIPE_FORMAT_R32G32B32_FLOAT;
+      st->util_velems[1].src_offset = 3 * sizeof(float);
+      st->util_velems[1].vertex_buffer_index = 0;
+      st->util_velems[1].src_format = PIPE_FORMAT_R32G32B32A32_FLOAT;
+      st->util_velems[2].src_offset = 7 * sizeof(float);
+      st->util_velems[2].vertex_buffer_index = 0;
+      st->util_velems[2].src_format = PIPE_FORMAT_R32G32_FLOAT;
    }
+
+   /* we want all vertex data to be placed in buffer objects */
+   vbo_use_buffer_objects(ctx);
+
+
+   /* make sure that no VBOs are left mapped when we're drawing. */
+   vbo_always_unmap_buffers(ctx);
 
    /* Need these flags:
     */
    ctx->FragmentProgram._MaintainTexEnvProgram = GL_TRUE;
+
    ctx->VertexProgram._MaintainTnlProgram = GL_TRUE;
 
    if (no_error)
@@ -691,6 +680,8 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
       screen->get_param(screen, PIPE_CAP_INDEP_BLEND_FUNC);
    st->needs_rgb_dst_alpha_override =
       screen->get_param(screen, PIPE_CAP_RGB_OVERRIDE_DST_ALPHA_BLEND);
+   st->has_signed_vertex_buffer_offset =
+      screen->get_param(screen, PIPE_CAP_SIGNED_VERTEX_BUFFER_OFFSET);
    st->lower_flatshade =
       !screen->get_param(screen, PIPE_CAP_FLATSHADE);
    st->lower_alpha_test =
@@ -766,10 +757,6 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
     */
    ctx->Point.MaxSize = MAX2(ctx->Const.MaxPointSize,
                              ctx->Const.MaxPointSizeAA);
-
-   ctx->Const.NoClippingOnCopyTex = screen->get_param(screen,
-                                                      PIPE_CAP_NO_CLIP_ON_COPY_TEX);
-
    /* For vertex shaders, make sure not to emit saturate when SM 3.0
     * is not supported
     */
@@ -828,11 +815,6 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
       st_destroy_context_priv(st, false);
       return NULL;
    }
-
-   /* This must be done after extensions are initialized to enable persistent
-    * mappings immediately.
-    */
-   _vbo_CreateContext(ctx, true);
 
    _mesa_initialize_dispatch_tables(ctx);
    _mesa_initialize_vbo_vtxfmt(ctx);
@@ -1088,12 +1070,12 @@ st_destroy_context(struct st_context *st)
    simple_mtx_destroy(&st->zombie_sampler_views.mutex);
    simple_mtx_destroy(&st->zombie_shaders.mutex);
 
-   st_release_program(st, &st->fp);
-   st_release_program(st, &st->gp);
-   st_release_program(st, &st->vp);
-   st_release_program(st, &st->tcp);
-   st_release_program(st, &st->tep);
-   st_release_program(st, &st->cp);
+   st_reference_prog(st, &st->fp, NULL);
+   st_reference_prog(st, &st->gp, NULL);
+   st_reference_prog(st, &st->vp, NULL);
+   st_reference_prog(st, &st->tcp, NULL);
+   st_reference_prog(st, &st->tep, NULL);
+   st_reference_prog(st, &st->cp, NULL);
 
    /* release framebuffer in the winsys buffers list */
    LIST_FOR_EACH_ENTRY_SAFE_REV(stfb, next, &st->winsys_buffers, head) {
@@ -1109,18 +1091,12 @@ st_destroy_context(struct st_context *st)
 
    st_destroy_program_variants(st);
 
-   /* Do not release debug_output yet because it might be in use by other threads.
-    * These threads will be terminated by _mesa_free_context_data and
-    * st_destroy_context_priv.
-    */
-   _mesa_free_context_data(ctx, false);
+   _mesa_free_context_data(ctx);
 
    /* This will free the st_context too, so 'st' must not be accessed
     * afterwards. */
    st_destroy_context_priv(st, true);
    st = NULL;
-
-   _mesa_destroy_debug_output(ctx);
 
    free(ctx);
 

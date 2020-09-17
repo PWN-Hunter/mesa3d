@@ -2,8 +2,14 @@
 
 set -ex
 
+LLVM=libllvm8
+
+# LLVMPipe on armhf is broken with LLVM 8
+if [ `dpkg --print-architecture` = "armhf" ]; then
+        LLVM=libllvm7
+fi
+
 apt-get -y install --no-install-recommends \
-    ca-certificates \
     initramfs-tools \
     libpng16-16 \
     strace \
@@ -11,33 +17,14 @@ apt-get -y install --no-install-recommends \
     libexpat1 \
     libdrm2 \
     libdrm-nouveau2 \
-    firmware-qcom-media \
-    netcat-openbsd \
-    wget \
-    xz-utils
+    $LLVM
 passwd root -d
 chsh -s /bin/sh
-
-cat > /init <<EOF
-#!/bin/sh
-export PS1=lava-shell:
-exec sh
-EOF
-chmod +x  /init
-
-mkdir -p /lib/firmware/rtl_nic
-wget https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_nic/rtl8153a-3.fw -O /lib/firmware/rtl_nic/rtl8153a-3.fw
+ln -s /bin/sh /init
 
 #######################################################################
 # Strip the image to a small minimal system without removing the debian
 # toolchain.
-
-# xz compress firmware so it doesn't waste RAM at runtime.  Except db820c's
-# GPU firmware, due to using a precompiled kernel without compression support.
-find /lib/firmware -type f -print0 | \
-    grep -vz a530 | \
-    xargs -0r -P4 -n4 xz -T1 -C crc32
-ln -s /lib/firmware/qcom/a530* /lib/firmware/
 
 # Copy timezone file and remove tzdata package
 rm -rf /etc/localtime
@@ -96,8 +83,8 @@ rm -rf usr/share/misc/usb.ids
 # IMPORTANT: The Debian system is not longer functional at this point,
 # for example, apt and dpkg will stop working
 
-UNNEEDED_PACKAGES="apt libapt-pkg6.0 "\
-"ncurses-bin ncurses-base libncursesw6 libncurses6 "\
+UNNEEDED_PACKAGES="apt libapt-pkg5.0 "\
+"ncurses-bin ncurses-base libncursesw5 libncurses5 "\
 "perl-base "\
 "debconf libdebconfclient0 "\
 "e2fsprogs e2fslibs libfdisk1 "\
@@ -106,10 +93,10 @@ UNNEEDED_PACKAGES="apt libapt-pkg6.0 "\
 "init-system-helpers "\
 "bash "\
 "cpio "\
-"xz-utils "\
 "passwd "\
 "libsemanage1 libsemanage-common "\
 "libsepol1 "\
+"gzip "\
 "gpgv "\
 "hostname "\
 "adduser "\
@@ -167,10 +154,10 @@ rm -rf usr/lib/xtables
 rm -rf usr/lib/locale/*
 
 # partition helpers
-rm -rf usr/sbin/*fdisk
+rm usr/sbin/*fdisk
 
 # local compiler
-rm -rf usr/bin/localedef
+rm usr/bin/localedef
 
 # Systemd dns resolver
 find usr etc -name '*systemd-resolve*' -prune -exec rm -r {} \;
@@ -191,16 +178,18 @@ find usr etc -name '*fuse*' -prune -exec rm -r {} \;
 rm -rf usr/lib/lsb
 
 # Only needed when adding libraries
-rm -rf usr/sbin/ldconfig*
+rm usr/sbin/ldconfig*
 
 # Games, unused
 rmdir usr/games
 
 # Remove pam module to authenticate against a DB
 # plus libdb-5.3.so that is only used by this pam module
-rm -rf usr/lib/*/security/pam_userdb.so
-rm -rf usr/lib/*/libdb-5.3.so
+rm usr/lib/*/security/pam_userdb.so
+rm usr/lib/*/libdb-5.3.so
 
 # remove NSS support for nis, nisplus and hesiod
-rm -rf usr/lib/*/libnss_hesiod*
-rm -rf usr/lib/*/libnss_nis*
+rm usr/lib/*/libnss_hesiod*
+rm usr/lib/*/libnss_nis*
+
+rm bin/tar

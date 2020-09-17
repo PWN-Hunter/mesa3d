@@ -51,7 +51,7 @@ lookup_blorp_shader(struct blorp_batch *batch,
 }
 
 static bool
-upload_blorp_shader(struct blorp_batch *batch, uint32_t stage,
+upload_blorp_shader(struct blorp_batch *batch,
                     const void *key, uint32_t key_size,
                     const void *kernel, uint32_t kernel_size,
                     const struct brw_stage_prog_data *prog_data,
@@ -70,7 +70,7 @@ upload_blorp_shader(struct blorp_batch *batch, uint32_t stage,
    };
 
    struct anv_shader_bin *bin =
-      anv_pipeline_cache_upload_kernel(&device->default_pipeline_cache, stage,
+      anv_pipeline_cache_upload_kernel(&device->default_pipeline_cache,
                                        key, key_size, kernel, kernel_size,
                                        NULL, 0,
                                        prog_data, prog_data_size,
@@ -1580,7 +1580,7 @@ anv_image_clear_depth_stencil(struct anv_cmd_buffer *cmd_buffer,
     * cache before rendering to it.
     */
    cmd_buffer->state.pending_pipe_bits |=
-      ANV_PIPE_DEPTH_CACHE_FLUSH_BIT | ANV_PIPE_END_OF_PIPE_SYNC_BIT;
+      ANV_PIPE_DEPTH_CACHE_FLUSH_BIT | ANV_PIPE_CS_STALL_BIT;
 
    blorp_clear_depth_stencil(&batch, &depth, &stencil,
                              level, base_layer, layer_count,
@@ -1597,7 +1597,7 @@ anv_image_clear_depth_stencil(struct anv_cmd_buffer *cmd_buffer,
     * cache before someone starts trying to do stencil on it.
     */
    cmd_buffer->state.pending_pipe_bits |=
-      ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT | ANV_PIPE_END_OF_PIPE_SYNC_BIT;
+      ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT | ANV_PIPE_CS_STALL_BIT;
 
    struct blorp_surf stencil_shadow;
    if ((aspects & VK_IMAGE_ASPECT_STENCIL_BIT) &&
@@ -1628,8 +1628,8 @@ anv_image_hiz_op(struct anv_cmd_buffer *cmd_buffer,
 {
    assert(aspect == VK_IMAGE_ASPECT_DEPTH_BIT);
    assert(base_layer + layer_count <= anv_image_aux_layers(image, aspect, level));
-   uint32_t plane = anv_image_aspect_to_plane(image->aspects, aspect);
-   assert(plane == 0);
+   assert(anv_image_aspect_to_plane(image->aspects,
+                                    VK_IMAGE_ASPECT_DEPTH_BIT) == 0);
 
    struct blorp_batch batch;
    blorp_batch_init(&cmd_buffer->device->blorp, &batch, cmd_buffer, 0);
@@ -1638,7 +1638,7 @@ anv_image_hiz_op(struct anv_cmd_buffer *cmd_buffer,
    get_blorp_surf_for_anv_image(cmd_buffer->device,
                                 image, VK_IMAGE_ASPECT_DEPTH_BIT,
                                 0, ANV_IMAGE_LAYOUT_EXPLICIT_AUX,
-                                image->planes[plane].aux_usage, &surf);
+                                ISL_AUX_USAGE_HIZ, &surf);
    surf.clear_color.f32[0] = ANV_HZ_FC_VAL;
 
    blorp_hiz_op(&batch, &surf, level, base_layer, layer_count, hiz_op);
@@ -1662,25 +1662,21 @@ anv_image_hiz_clear(struct anv_cmd_buffer *cmd_buffer,
 
    struct blorp_surf depth = {};
    if (aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
-      uint32_t plane = anv_image_aspect_to_plane(image->aspects,
-                                                 VK_IMAGE_ASPECT_DEPTH_BIT);
       assert(base_layer + layer_count <=
              anv_image_aux_layers(image, VK_IMAGE_ASPECT_DEPTH_BIT, level));
       get_blorp_surf_for_anv_image(cmd_buffer->device,
                                    image, VK_IMAGE_ASPECT_DEPTH_BIT,
                                    0, ANV_IMAGE_LAYOUT_EXPLICIT_AUX,
-                                   image->planes[plane].aux_usage, &depth);
+                                   ISL_AUX_USAGE_HIZ, &depth);
       depth.clear_color.f32[0] = ANV_HZ_FC_VAL;
    }
 
    struct blorp_surf stencil = {};
    if (aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
-      uint32_t plane = anv_image_aspect_to_plane(image->aspects,
-                                                 VK_IMAGE_ASPECT_STENCIL_BIT);
       get_blorp_surf_for_anv_image(cmd_buffer->device,
                                    image, VK_IMAGE_ASPECT_STENCIL_BIT,
                                    0, ANV_IMAGE_LAYOUT_EXPLICIT_AUX,
-                                   image->planes[plane].aux_usage, &stencil);
+                                   ISL_AUX_USAGE_NONE, &stencil);
    }
 
    /* From the Sky Lake PRM Volume 7, "Depth Buffer Clear":
@@ -1736,7 +1732,7 @@ anv_image_hiz_clear(struct anv_cmd_buffer *cmd_buffer,
 void
 anv_image_mcs_op(struct anv_cmd_buffer *cmd_buffer,
                  const struct anv_image *image,
-                 enum isl_format format, struct isl_swizzle swizzle,
+                 enum isl_format format,
                  VkImageAspectFlagBits aspect,
                  uint32_t base_layer, uint32_t layer_count,
                  enum isl_aux_op mcs_op, union isl_color_value *clear_value,
@@ -1782,11 +1778,11 @@ anv_image_mcs_op(struct anv_cmd_buffer *cmd_buffer,
     * that it is completed before any additional drawing occurs.
     */
    cmd_buffer->state.pending_pipe_bits |=
-      ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT | ANV_PIPE_END_OF_PIPE_SYNC_BIT;
+      ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT | ANV_PIPE_CS_STALL_BIT;
 
    switch (mcs_op) {
    case ISL_AUX_OP_FAST_CLEAR:
-      blorp_fast_clear(&batch, &surf, format, swizzle,
+      blorp_fast_clear(&batch, &surf, format,
                        0, base_layer, layer_count,
                        0, 0, image->extent.width, image->extent.height);
       break;
@@ -1801,7 +1797,7 @@ anv_image_mcs_op(struct anv_cmd_buffer *cmd_buffer,
    }
 
    cmd_buffer->state.pending_pipe_bits |=
-      ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT | ANV_PIPE_END_OF_PIPE_SYNC_BIT;
+      ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT | ANV_PIPE_CS_STALL_BIT;
 
    blorp_batch_finish(&batch);
 }
@@ -1809,7 +1805,7 @@ anv_image_mcs_op(struct anv_cmd_buffer *cmd_buffer,
 void
 anv_image_ccs_op(struct anv_cmd_buffer *cmd_buffer,
                  const struct anv_image *image,
-                 enum isl_format format, struct isl_swizzle swizzle,
+                 enum isl_format format,
                  VkImageAspectFlagBits aspect, uint32_t level,
                  uint32_t base_layer, uint32_t layer_count,
                  enum isl_aux_op ccs_op, union isl_color_value *clear_value,
@@ -1863,11 +1859,11 @@ anv_image_ccs_op(struct anv_cmd_buffer *cmd_buffer,
     * that it is completed before any additional drawing occurs.
     */
    cmd_buffer->state.pending_pipe_bits |=
-      ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT | ANV_PIPE_END_OF_PIPE_SYNC_BIT;
+      ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT | ANV_PIPE_CS_STALL_BIT;
 
    switch (ccs_op) {
    case ISL_AUX_OP_FAST_CLEAR:
-      blorp_fast_clear(&batch, &surf, format, swizzle,
+      blorp_fast_clear(&batch, &surf, format,
                        level, base_layer, layer_count,
                        0, 0, level_width, level_height);
       break;
@@ -1887,7 +1883,7 @@ anv_image_ccs_op(struct anv_cmd_buffer *cmd_buffer,
    }
 
    cmd_buffer->state.pending_pipe_bits |=
-      ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT | ANV_PIPE_END_OF_PIPE_SYNC_BIT;
+      ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT | ANV_PIPE_CS_STALL_BIT;
 
    blorp_batch_finish(&batch);
 }

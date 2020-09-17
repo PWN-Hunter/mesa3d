@@ -191,10 +191,6 @@ swr_cpp_args = [cpp_vis_args]
 if cpp.has_argument('-fno-strict-aliasing')
   swr_cpp_args += '-fno-strict-aliasing'
 endif
-if cpp.has_argument('-Wno-aligned-new')
-  swr_cpp_args += '-Wno-aligned-new'
-endif
-
 
 swr_arch_libs = []
 swr_defines = []
@@ -238,7 +234,6 @@ if with_swr_arches.contains('skx')
       version : '0.0.0',
       soversion : host_machine.system() == 'windows' ? '' : '0',
       install : true,
-      name_prefix : host_machine.system() == 'windows' ? '' : 'lib',
     )
   else
     swr_arch_libs += static_library(
@@ -278,7 +273,6 @@ if with_swr_arches.contains('knl')
       version : '0.0.0',
       soversion : host_machine.system() == 'windows' ? '' : '0',
       install : true,
-      name_prefix : host_machine.system() == 'windows' ? '' : 'lib',
     )
   else
     swr_arch_libs += static_library(
@@ -323,7 +317,6 @@ if with_swr_arches.contains('avx2')
       version : '0.0.0',
       soversion : host_machine.system() == 'windows' ? '' : '0',
       install : true,
-      name_prefix : host_machine.system() == 'windows' ? '' : 'lib',
     )
   else
     swr_arch_libs += static_library(
@@ -356,7 +349,6 @@ if with_swr_arches.contains('avx')
       version : '0.0.0',
       soversion : host_machine.system() == 'windows' ? '' : '0',
       install : true,
-      name_prefix : host_machine.system() == 'windows' ? '' : 'lib',
     )
   else
     swr_arch_libs += static_library(
@@ -387,7 +379,7 @@ libmesaswr = static_library(
     cpp_msvc_compat_args, cpp_vis_args, swr_cpp_args, swr_avx_args,
     swr_defines,
   ],
-  include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux, swr_incs],
+  include_directories : [inc_common, swr_incs],
   dependencies : dep_llvm,
 )
 

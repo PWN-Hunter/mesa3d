@@ -505,8 +505,8 @@ nir_compare_deref_paths(nir_deref_path *a_path,
    }
 
    /* We're at either the tail or the divergence point between the two deref
-    * paths.  Look to see if either contains cast or a ptr_as_array deref.  If
-    * it does we don't know how to safely make any inferences.  Hopefully,
+    * paths.  Look to see if either contains a ptr_as_array deref.  It it
+    * does we don't know how to safely make any inferences.  Hopefully,
     * nir_opt_deref will clean most of these up and we can start inferring
     * things again.
     *
@@ -516,13 +516,11 @@ nir_compare_deref_paths(nir_deref_path *a_path,
     * different constant indices.
     */
    for (nir_deref_instr **t_p = a_p; *t_p; t_p++) {
-      if ((*t_p)->deref_type == nir_deref_type_cast ||
-          (*t_p)->deref_type == nir_deref_type_ptr_as_array)
+      if ((*t_p)->deref_type == nir_deref_type_ptr_as_array)
          return nir_derefs_may_alias_bit;
    }
    for (nir_deref_instr **t_p = b_p; *t_p; t_p++) {
-      if ((*t_p)->deref_type == nir_deref_type_cast ||
-          (*t_p)->deref_type == nir_deref_type_ptr_as_array)
+      if ((*t_p)->deref_type == nir_deref_type_ptr_as_array)
          return nir_derefs_may_alias_bit;
    }
 
@@ -755,42 +753,6 @@ nir_rematerialize_derefs_in_use_blocks_impl(nir_function_impl *impl)
    return state.progress;
 }
 
-static void
-nir_deref_instr_fixup_child_types(nir_deref_instr *parent)
-{
-   nir_foreach_use(use, &parent->dest.ssa) {
-      if (use->parent_instr->type != nir_instr_type_deref)
-         continue;
-
-      nir_deref_instr *child = nir_instr_as_deref(use->parent_instr);
-      switch (child->deref_type) {
-      case nir_deref_type_var:
-         unreachable("nir_deref_type_var cannot be a child");
-
-      case nir_deref_type_array:
-      case nir_deref_type_array_wildcard:
-         child->type = glsl_get_array_element(parent->type);
-         break;
-
-      case nir_deref_type_ptr_as_array:
-         child->type = parent->type;
-         break;
-
-      case nir_deref_type_struct:
-         child->type = glsl_get_struct_field(parent->type,
-                                             child->strct.index);
-         break;
-
-      case nir_deref_type_cast:
-         /* We stop the recursion here */
-         continue;
-      }
-
-      /* Recurse into children */
-      nir_deref_instr_fixup_child_types(child);
-   }
-}
-
 static bool
 is_trivial_array_deref_cast(nir_deref_instr *cast)
 {
@@ -838,44 +800,6 @@ opt_remove_cast_cast(nir_deref_instr *cast)
    return true;
 }
 
-static bool
-opt_remove_sampler_cast(nir_deref_instr *cast)
-{
-   assert(cast->deref_type == nir_deref_type_cast);
-   nir_deref_instr *parent = nir_src_as_deref(cast->parent);
-   if (parent == NULL)
-      return false;
-
-   /* Strip both types down to their non-array type and bail if there are any
-    * discrepancies in array lengths.
-    */
-   const struct glsl_type *parent_type = parent->type;
-   const struct glsl_type *cast_type = cast->type;
-   while (glsl_type_is_array(parent_type) && glsl_type_is_array(cast_type)) {
-      if (glsl_get_length(parent_type) != glsl_get_length(cast_type))
-         return false;
-      parent_type = glsl_get_array_element(parent_type);
-      cast_type = glsl_get_array_element(cast_type);
-   }
-
-   if (glsl_type_is_array(parent_type) || glsl_type_is_array(cast_type))
-      return false;
-
-   if (!glsl_type_is_sampler(parent_type) ||
-       cast_type != glsl_bare_sampler_type())
-      return false;
-
-   /* We're a cast from a more detailed sampler type to a bare sampler */
-   nir_ssa_def_rewrite_uses(&cast->dest.ssa,
-                            nir_src_for_ssa(&parent->dest.ssa));
-   nir_instr_remove(&cast->instr);
-
-   /* Recursively crawl the deref tree and clean up types */
-   nir_deref_instr_fixup_child_types(parent);
-
-   return true;
-}
-
 /**
  * Is this casting a struct to a contained struct.
  * struct a { struct b field0 };
@@ -915,9 +839,6 @@ opt_deref_cast(nir_builder *b, nir_deref_instr *cast)
    if (opt_replace_struct_wrapper_cast(b, cast))
       return true;
 
-   if (opt_remove_sampler_cast(cast))
-      return true;
-
    progress = opt_remove_cast_cast(cast);
    if (!is_trivial_deref_cast(cast))
       return progress;
@@ -942,9 +863,7 @@ opt_deref_cast(nir_builder *b, nir_deref_instr *cast)
    /* If uses would be a bit crazy */
    assert(list_is_empty(&cast->dest.ssa.if_uses));
 
-   if (nir_deref_instr_remove_if_unused(cast))
-      progress = true;
-
+   nir_deref_instr_remove_if_unused(cast);
    return progress;
 }
 

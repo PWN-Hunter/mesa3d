@@ -24,12 +24,21 @@
 # BOARD_GPU_DRIVERS should be defined.  The valid values are
 #
 #   classic drivers: i915 i965
-#   gallium drivers: swrast freedreno i915g nouveau kmsro r300g r600g radeonsi vc4 virgl vmwgfx etnaviv iris lima panfrost
+#   gallium drivers: swrast freedreno i915g nouveau kmsro r300g r600g radeonsi vc4 virgl vmwgfx etnaviv iris lima panfrost tegra
 #
 # The main target is libGLES_mesa.  For each classic driver enabled, a DRI
 # module will also be built.  DRI modules will be loaded by libGLES_mesa.
 
-MESA_TOP := $(call my-dir)
+LOCAL_PATH := $(call my-dir)
+
+ifneq ($(BOARD_USE_CUSTOMIZED_MESA), true)
+ifneq ($(BOARD_GPU_DRIVERS),)
+
+MESA_TOP := $(LOCAL_PATH)
+
+ifeq ($(filter $(MESA_TOP),$(PRODUCT_SOONG_NAMESPACES)),)
+  $(error $(MESA_TOP) must be in PRODUCT_SOONG_NAMESPACES)
+endif
 
 MESA_ANDROID_MAJOR_VERSION := $(word 1, $(subst ., , $(PLATFORM_VERSION)))
 ifneq ($(filter 2 4, $(MESA_ANDROID_MAJOR_VERSION)),)
@@ -53,6 +62,7 @@ gallium_drivers := \
 	freedreno.HAVE_GALLIUM_FREEDRENO \
 	i915g.HAVE_GALLIUM_I915 \
 	nouveau.HAVE_GALLIUM_NOUVEAU \
+	tegra.HAVE_GALLIUM_TEGRA \
 	kmsro.HAVE_GALLIUM_KMSRO \
 	r300g.HAVE_GALLIUM_R300 \
 	r600g.HAVE_GALLIUM_R600 \
@@ -117,3 +127,14 @@ SUBDIRS := \
 INC_DIRS := $(call all-named-subdir-makefiles,$(SUBDIRS))
 INC_DIRS += $(call all-named-subdir-makefiles,src/gallium)
 include $(INC_DIRS)
+
+else
+  ifneq ($(filter $(LOCAL_PATH),$(PRODUCT_SOONG_NAMESPACES)),)
+    $(error $(LOCAL_PATH) in PRODUCT_SOONG_NAMESPACES, but not configured in Make)
+  endif
+endif # BOARD_GPU_DRIVERS != ""
+else
+  ifneq ($(filter $(LOCAL_PATH),$(PRODUCT_SOONG_NAMESPACES)),)
+    $(error $(LOCAL_PATH) in PRODUCT_SOONG_NAMESPACES, but not configured in Make)
+  endif
+endif # BOARD_USE_CUSTOMIZED_MESA != true

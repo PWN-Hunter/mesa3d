@@ -21,6 +21,9 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
+# ! Whenever updating this file, make sure to keep mesa_common_defaults in the
+# ! Android.bp up to date.
+
 ifeq ($(LOCAL_IS_HOST_MODULE),true)
 LOCAL_CFLAGS += -D_GNU_SOURCE
 endif
@@ -39,7 +42,7 @@ LOCAL_CFLAGS += \
 	-Wno-initializer-overrides \
 	-Wno-mismatched-tags \
 	-DPACKAGE_VERSION=\"$(MESA_VERSION)\" \
-	-DPACKAGE_BUGREPORT=\"https://gitlab.freedesktop.org/mesa/mesa/-/issues\"
+	-DPACKAGE_BUGREPORT=\"https://gitlab.freedesktop.org/mesa/mesa/issues\"
 
 # XXX: The following __STDC_*_MACROS defines should not be needed.
 # It's likely due to a bug elsewhere, but let's temporarily add them
@@ -78,7 +81,25 @@ LOCAL_CFLAGS += \
 	-fvisibility=hidden \
 	-fno-math-errno \
 	-fno-trapping-math \
-	-Wno-sign-compare
+	-Werror \
+	-Wno-\#warnings \
+	-Wno-asm-operand-widths \
+	-Wno-cast-calling-convention \
+	-Wno-constant-logical-operand \
+	-Wno-enum-conversion \
+	-Wno-format \
+	-Wno-gnu-variable-sized-type-not-at-end \
+	-Wno-implicit-fallthrough \
+	-Wno-incompatible-pointer-types \
+	-Wno-missing-braces \
+	-Wno-overloaded-virtual \
+	-Wno-self-assign \
+	-Wno-shift-negative-value \
+	-Wno-sign-compare \
+	-Wno-sometimes-uninitialized \
+	-Wno-switch \
+	-Wno-typedef-redefinition \
+	-Wno-uninitialized \
 
 LOCAL_CPPFLAGS += \
 	-D__STDC_CONSTANT_MACROS \

@@ -22,7 +22,7 @@ project(
   'mesa',
   ['c', 'cpp'],
   version : run_command(
-    [find_program('python', 'python3'), 'bin/meson_get_version.py']
+    [find_program('python', 'python2', 'python3'), 'bin/meson_get_version.py']
   ).stdout(),
   license : 'MIT',
   meson_version : '>= 0.46',
@@ -34,10 +34,6 @@ cpp = meson.get_compiler('cpp')
 
 null_dep = dependency('', required : false)
 
-if get_option('layout') != 'mirror'
-  error('`mirror` is the only build directory layout supported')
-endif
-
 # Arguments for the preprocessor, put these in a separate array from the C and
 # C++ (cpp in meson terminology) arguments since they need to be added to the
 # default arguments for both C and C++.
@@ -46,7 +42,7 @@ pre_args = [
   '-D__STDC_FORMAT_MACROS',
   '-D__STDC_LIMIT_MACROS',
   '-DPACKAGE_VERSION="@0@"'.format(meson.project_version()),
-  '-DPACKAGE_BUGREPORT="https://gitlab.freedesktop.org/mesa/mesa/-/issues"',
+  '-DPACKAGE_BUGREPORT="https://gitlab.freedesktop.org/mesa/mesa/issues"',
 ]
 
 with_vulkan_icd_dir = get_option('vulkan-icd-dir')
@@ -248,6 +244,10 @@ with_amd_vk = _vulkan_drivers.contains('amd')
 with_freedreno_vk = _vulkan_drivers.contains('freedreno')
 with_any_vk = _vulkan_drivers.length() != 0 and _vulkan_drivers != ['']
 
+if with_freedreno_vk and get_option('I-love-half-baked-turnips') != true
+  error('Cannot enable freedreno vulkan driver')
+endif
+
 if with_dri_swrast and (with_gallium_softpipe or with_gallium_swr)
   error('Only one swrast provider can be built')
 endif
@@ -392,7 +392,7 @@ if with_egl and not (with_platform_drm or with_platform_surfaceless or with_plat
 endif
 
 # Android uses emutls for versions <= P/28. For USE_ELF_TLS we need ELF TLS.
-if not ['windows', 'freebsd'].contains(host_machine.system()) and (not with_platform_android or get_option('platform-sdk-version') >= 29)
+if host_machine.system() != 'windows' and (not with_platform_android or get_option('platform-sdk-version') >= 29)
   pre_args += '-DUSE_ELF_TLS'
 endif
 
@@ -455,6 +455,8 @@ if with_dri
   endif
 endif
 
+prog_pkgconfig = find_program('pkg-config')
+
 _vdpau = get_option('gallium-vdpau')
 if not system_has_kms_drm
   if _vdpau == 'true'
@@ -481,7 +483,9 @@ with_gallium_vdpau = false
 if _vdpau != 'false'
   dep_vdpau = dependency('vdpau', version : '>= 1.1', required : _vdpau == 'true')
   if dep_vdpau.found()
-    dep_vdpau = dep_vdpau.partial_dependency(compile_args : true)
+    dep_vdpau = declare_dependency(
+      compile_args : run_command(prog_pkgconfig, ['vdpau', '--cflags']).stdout().split()
+    )
     with_gallium_vdpau = true
   endif
 endif
@@ -631,7 +635,9 @@ dep_va = null_dep
 if _va != 'false'
   dep_va = dependency('libva', version : '>= 0.38.0', required : _va == 'true')
   if dep_va.found()
-    dep_va_headers = dep_va.partial_dependency(compile_args : true)
+    dep_va_headers = declare_dependency(
+      compile_args : run_command(prog_pkgconfig, ['libva', '--cflags']).stdout().split()
+    )
     with_gallium_va = true
   endif
 endif
@@ -705,6 +711,7 @@ if get_option('power8') != 'false'
 endif
 
 _opencl = get_option('gallium-opencl')
+clover_cpp_std = []
 if _opencl != 'disabled'
   if not with_gallium
     error('OpenCL Clover implementation requires at least one gallium driver.')
@@ -722,6 +729,14 @@ if _opencl != 'disabled'
   else
     dep_spirv_tools = null_dep
     dep_llvmspirvlib = null_dep
+  endif
+
+  if host_machine.cpu_family().startswith('ppc') and cpp.compiles('''
+      #if !defined(__VEC__) || !defined(__ALTIVEC__)
+      #error "AltiVec not enabled"
+      #endif''',
+      name : 'Altivec')
+    clover_cpp_std += ['cpp_std=gnu++11']
   endif
 else
   dep_clc = null_dep
@@ -771,9 +786,6 @@ if with_platform_android
     dependency('hardware'),
     dependency('sync'),
   ]
-  if with_gallium
-    dep_android += dependency('backtrace')
-  endif
   if get_option('platform-sdk-version') >= 26
     dep_android += dependency('nativewindow')
   endif
@@ -824,6 +836,9 @@ if _shader_cache != 'false'
     pre_args += '-DENABLE_SHADER_CACHE'
     with_shader_cache = true
   endif
+endif
+if with_amd_vk and not with_shader_cache
+  error('Radv requires shader cache support')
 endif
 
 # Check for GCC style builtins
@@ -881,7 +896,7 @@ elif host_machine.system() == 'sunos'
   pre_args += '-D__EXTENSIONS__'
 elif host_machine.system() == 'windows'
   pre_args += [
-    '-D_WINDOWS', '-D_WIN32_WINNT=0x0601', '-DWINVER=0x0601',
+    '-D_WINDOWS', '-D_WIN32_WINNT=0x0601', '-D_WINVER=0x0601',
     '-DPIPE_SUBSYSTEM_WINDOWS_USER',
     '-D_USE_MATH_DEFINES',  # XXX: scons doesn't use this for mingw
   ]
@@ -898,8 +913,6 @@ elif host_machine.system() == 'windows'
   else
     pre_args += ['-D__MSVCRT_VERSION__=0x0700']
   endif
-elif host_machine.system() == 'openbsd'
-  pre_args += '-D_ISOC11_SOURCE'
 endif
 
 # Check for generic C arguments
@@ -920,11 +933,7 @@ if cc.get_id() == 'msvc'
                '/wd4756',  # overflow in constant arithmetic
                '/wd4800',  # forcing value to bool 'true' or 'false' (performance warning)
                '/wd4996',  # disabled deprecated POSIX name warnings
-               '/wd4291',  # no matching operator delete found
-               '/wd4146',  # unary minus operator applied to unsigned type, result still unsigned
-               '/wd4200',  # nonstandard extension used: zero-sized array in struct/union
-               '/wd4624',  # destructor was implicitly defined as deleted [from LLVM]
-              ]
+               '/wd4291']  # no matching operator delete found
     if cc.has_argument(a)
       c_args += a
     endif
@@ -949,7 +958,6 @@ else
     '-fno-math-errno',
     '-fno-trapping-math',
     '-Qunused-arguments',
-    '-fno-common',
   ]
   # MinGW chokes on format specifiers and I can't get it all working
   if not (cc.get_id() == 'gcc' and host_machine.system() == 'windows')
@@ -970,11 +978,6 @@ else
     '-fno-math-errno',
     '-fno-trapping-math',
     '-Qunused-arguments',
-    # Some classes use custom new operator which zeroes memory, however
-    # gcc does aggressive dead-store elimination which threats all writes
-    # to the memory before the constructor as "dead stores".
-    # For now we disable this optimization.
-    '-flifetime-dse=1',
   ]
   # MinGW chokes on format specifiers and I can't get it all working
   if not (cc.get_id() == 'gcc' and host_machine.system() == 'windows')
@@ -1019,16 +1022,11 @@ if host_machine.system() == 'windows'
   if cc.get_id() == 'msvc'
     add_project_link_arguments(
       '/fixed:no',
+      '/incremental:no',
       '/dynamicbase',
       '/nxcompat',
       language : ['c', 'cpp'],
     )
-    if get_option('buildtype') != 'debug'
-      add_project_link_arguments(
-        '/incremental:no',
-        language : ['c', 'cpp'],
-      )
-    endif
   else
     add_project_link_arguments(
       '-Wl,--nxcompat',
@@ -1152,14 +1150,7 @@ if (cc.has_header_symbol('sys/mkdev.h', 'major') and
   pre_args += '-DMAJOR_IN_MKDEV'
 endif
 
-if not ['linux'].contains(host_machine.system())
-  # Deprecated on Linux and requires <sys/types.h> on FreeBSD and OpenBSD
-  if cc.compiles('#include <sys/types.h>\n#include <sys/sysctl.h>', name : 'sys/sysctl.h')
-    pre_args += '-DHAVE_SYS_SYSCTL_H'
-  endif
-endif
-
-foreach h : ['xlocale.h', 'linux/futex.h', 'endian.h', 'dlfcn.h', 'execinfo.h', 'sys/shm.h', 'cet.h', 'pthread_np.h']
+foreach h : ['xlocale.h', 'sys/sysctl.h', 'linux/futex.h', 'endian.h', 'dlfcn.h', 'execinfo.h', 'sys/shm.h', 'cet.h']
   if cc.compiles('#include <@0@>'.format(h), name : '@0@'.format(h))
     pre_args += '-DHAVE_@0@'.format(h.to_upper().underscorify())
   endif
@@ -1291,6 +1282,12 @@ if dep_thread.found() and host_machine.system() != 'windows'
       args : '-D_GNU_SOURCE')
     pre_args += '-DHAVE_PTHREAD_SETAFFINITY'
   endif
+  if cc.has_function(
+      'pthread_setaffinity_np',
+      dependencies : dep_thread,
+      prefix : '#include <pthread_np.h>')
+    pre_args += '-DPTHREAD_SETAFFINITY_IN_NP_HEADER'
+  endif
 endif
 if host_machine.system() != 'windows'
   dep_expat = dependency('expat', fallback : ['expat', 'expat_dep'])
@@ -1396,21 +1393,14 @@ else
 endif
 
 _shared_llvm = get_option('shared-llvm')
-if _shared_llvm == 'auto'
-  _shared_llvm = (host_machine.system() != 'windows')
-else
-  _shared_llvm = (_shared_llvm == 'true')
-endif
 _llvm = get_option('llvm')
 
-# the cmake method can only link statically, so don't attempt to use it if we
-# want to link dynamically. Before 0.54.0 meson will try cmake even when shared
-# linking is requested, so we need to force the config-tool method to be used
-# in that case, but in 0.54.0 meson won't try the cmake method if shared
-# linking is requested.
-_llvm_method = 'auto'
-if meson.version().version_compare('< 0.54.0') and _shared_llvm
-  _llvm_method = 'config-tool'
+# The cmake method will never find libllvm.so|dylib; this is fine for windows
+# because llvm doesn't support libllvm.dll
+_llvm_method = 'config-tool'
+if (meson.version().version_compare('>= 0.51.0') and
+    host_machine.system() == 'windows')
+  _llvm_method = 'cmake'
 endif
 
 dep_llvm = null_dep
@@ -1503,7 +1493,7 @@ if host_machine.system() == 'windows'
   if prog_flex.found()
     # windows compatibility (uses <io.h> instead of <unistd.h> and _isatty,
     # _fileno functions)
-    prog_flex = [prog_flex, '--wincompat', '-D__STDC_VERSION__=199901']
+    prog_flex = [prog_flex, '--wincompat']
   else
     prog_flex = [find_program('lex', 'flex', required : with_any_opengl)]
   endif
@@ -1518,14 +1508,6 @@ if host_machine.system() == 'windows'
   endif
 else
   prog_bison = find_program('bison', required : with_any_opengl)
-
-  # Disable deprecated keyword warnings, since we have to use them for
-  # old-bison compat.  See discussion in
-  # https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/2161
-  if meson.version().version_compare('>= 0.52.0') and find_program('bison', required : false, version : '> 2.3').found()
-    prog_bison = [prog_bison, '-Wno-deprecated']
-  endif
-
   prog_flex = find_program('flex', required : with_any_opengl)
 endif
 
@@ -1580,7 +1562,8 @@ if with_platform_wayland
   dep_wayland_server = dependency('wayland-server', version : '>=1.11')
   if with_egl
     dep_wayland_egl = dependency('wayland-egl-backend', version : '>= 3')
-    dep_wayland_egl_headers = dep_wayland_egl.partial_dependency(compile_args : true)
+    dep_wayland_egl_headers = declare_dependency(
+      compile_args : run_command(prog_pkgconfig, ['wayland-egl-backend', '--cflags']).stdout().split())
   endif
   wayland_dmabuf_xml = join_paths(
     dep_wl_protocols.get_pkgconfig_variable('pkgdatadir'), 'unstable',
@@ -1715,12 +1698,6 @@ if dep_m.found()
 endif
 if dep_dl.found()
   gl_priv_libs += '-ldl'
-endif
-
-# FIXME: autotools lists this as incomplete
-gbm_priv_libs = []
-if dep_dl.found()
-  gbm_priv_libs += '-ldl'
 endif
 
 pkg = import('pkgconfig')

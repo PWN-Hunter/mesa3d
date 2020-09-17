@@ -27,7 +27,7 @@
 ******************************************************************************/
 #pragma once
 
-#if defined(_MSC_VER)
+#if defined(_WIN32)
 // disable "potential divide by 0"
 #pragma warning(disable: 4723)
 #endif

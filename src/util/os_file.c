@@ -67,7 +67,7 @@ readN(int fd, char *buf, size_t len)
 }
 
 char *
-os_read_file(const char *filename, size_t *size)
+os_read_file(const char *filename)
 {
    /* Note that this also serves as a slight margin to avoid a 2x grow when
     * the file is just a few bytes larger when we read it than when we
@@ -130,22 +130,15 @@ os_read_file(const char *filename, size_t *size)
 
    buf[offset] = '\0';
 
-   if (size)
-      *size = offset;
-
    return buf;
 }
 
-int
+bool
 os_same_file_description(int fd1, int fd2)
 {
    pid_t pid = getpid();
 
-   /* Same file descriptor trivially implies same file description */
-   if (fd1 == fd2)
-      return 0;
-
-   return syscall(SYS_kcmp, pid, pid, KCMP_FILE, fd1, fd2);
+   return syscall(SYS_kcmp, pid, pid, KCMP_FILE, fd1, fd2) == 0;
 }
 
 #else
@@ -153,21 +146,21 @@ os_same_file_description(int fd1, int fd2)
 #include "u_debug.h"
 
 char *
-os_read_file(const char *filename, size_t *size)
+os_read_file(const char *filename)
 {
    errno = -ENOSYS;
    return NULL;
 }
 
-int
+bool
 os_same_file_description(int fd1, int fd2)
 {
-   /* Same file descriptor trivially implies same file description */
    if (fd1 == fd2)
-      return 0;
+      return true;
 
-   /* Otherwise we can't tell */
-   return -1;
+   debug_warn_once("Can't tell if different file descriptors reference the same"
+                   " file description, false negatives might cause trouble!\n");
+   return false;
 }
 
 #endif
